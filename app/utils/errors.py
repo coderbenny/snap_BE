@@ -31,3 +31,11 @@ def unprocessable(message: str):
 
 def server_error(message: str = 'An unexpected error occurred'):
     return error_response('INTERNAL_ERROR', message, 500)
+
+
+def validation_failed(messages: dict):
+    flat = '; '.join(
+        f"{field}: {', '.join(errs) if isinstance(errs, list) else errs}"
+        for field, errs in messages.items()
+    )
+    return error_response('VALIDATION_FAILED', flat, 422)
