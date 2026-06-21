@@ -1,0 +1,648 @@
+openapi: 3.1.0
+
+info:
+  title: SNAP API
+  version: 0.1.0
+  description: >
+    Universal Snippet & Clipboard Vault — REST API serving the desktop, mobile,
+    and web clients. All clipboard content is encrypted client-side before
+    transmission; the server stores ciphertext only.
+
+servers:
+  - url: http://localhost:5000
+    description: Local development
+  - url: https://api.snapapp.io
+    description: Production
+
+tags:
+  - name: System
+    description: Health and status endpoints
+  - name: Auth
+    description: Registration, login, token management
+  - name: Devices
+    description: Device registration and management
+  - name: Sync
+    description: Encrypted clipboard item sync (Pro tier)
+  - name: Billing
+    description: Subscription and payment management
+  - name: Teams
+    description: Team and shared snippet management (Team tier)
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      operationId: health
+      tags: [System]
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  version:
+                    type: string
+                    example: 0.1.0
+
+  /health/db:
+    get:
+      summary: Database health check
+      operationId: health_db
+      tags: [System]
+      responses:
+        '200':
+          description: Database is connected
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  database:
+                    type: string
+                    example: connected
+        '503':
+          description: Database is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ── Auth (Phase 1) ──────────────────────────────────────────────────────────
+  /auth/register:
+    post:
+      summary: Register a new user
+      operationId: register
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: User created successfully
+        '409':
+          description: Email already in use
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/login:
+    post:
+      summary: Authenticate and receive tokens
+      operationId: login
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Authentication successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/refresh:
+    post:
+      summary: Refresh access token
+      operationId: refresh
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refresh_token:
+                  type: string
+      responses:
+        '200':
+          description: New access token issued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:
+                    type: string
+        '401':
+          description: Invalid or expired refresh token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/logout:
+    post:
+      summary: Invalidate refresh token
+      operationId: logout
+      tags: [Auth]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refresh_token:
+                  type: string
+      responses:
+        '204':
+          description: Logged out successfully
+
+  # ── Devices (Phase 1) ───────────────────────────────────────────────────────
+  /devices/register:
+    post:
+      summary: Register a new device for the authenticated user
+      operationId: register_device
+      tags: [Devices]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterDeviceRequest'
+      responses:
+        '201':
+          description: Device registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Device'
+
+  /devices:
+    get:
+      summary: List all devices for the authenticated user
+      operationId: list_devices
+      tags: [Devices]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of devices
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  devices:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Device'
+
+  /devices/{device_id}:
+    delete:
+      summary: Remove a registered device
+      operationId: delete_device
+      tags: [Devices]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: device_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Device removed
+        '404':
+          description: Device not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ── Sync (Phase 2) ──────────────────────────────────────────────────────────
+  /sync:
+    get:
+      summary: Pull clipboard items since a given timestamp (Pro)
+      operationId: sync_pull
+      tags: [Sync]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: since
+          in: query
+          required: false
+          schema:
+            type: integer
+            description: Unix timestamp — returns items synced after this point
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 200
+            maximum: 200
+      responses:
+        '200':
+          description: Items since last sync
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncPullResponse'
+        '403':
+          description: Pro subscription required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /sync/push:
+    post:
+      summary: Push new clipboard items to the server (Pro)
+      operationId: sync_push
+      tags: [Sync]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SyncPushRequest'
+      responses:
+        '200':
+          description: Items accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accepted:
+                    type: integer
+        '403':
+          description: Pro subscription required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /sync/delete:
+    post:
+      summary: Soft-delete clipboard items by ID list (Pro)
+      operationId: sync_delete
+      tags: [Sync]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ids:
+                  type: array
+                  items:
+                    type: string
+                  maxItems: 500
+      responses:
+        '200':
+          description: Items marked deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted:
+                    type: integer
+
+  # ── Billing (Phase 3) ───────────────────────────────────────────────────────
+  /billing/plans:
+    get:
+      summary: List available subscription plans
+      operationId: list_plans
+      tags: [Billing]
+      responses:
+        '200':
+          description: Available plans
+
+  /billing/subscribe:
+    post:
+      summary: Start a subscription checkout session
+      operationId: subscribe
+      tags: [Billing]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: provider
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [stripe, paystack]
+      responses:
+        '200':
+          description: Checkout URL
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  checkout_url:
+                    type: string
+
+  /billing/portal:
+    post:
+      summary: Get Stripe Customer Portal URL
+      operationId: billing_portal
+      tags: [Billing]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Portal URL
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  portal_url:
+                    type: string
+
+  /webhooks/stripe:
+    post:
+      summary: Stripe webhook receiver
+      operationId: stripe_webhook
+      tags: [Billing]
+      responses:
+        '200':
+          description: Event acknowledged
+
+  /webhooks/paystack:
+    post:
+      summary: Paystack webhook receiver
+      operationId: paystack_webhook
+      tags: [Billing]
+      responses:
+        '200':
+          description: Event acknowledged
+
+  # ── Teams (Phase 4) ─────────────────────────────────────────────────────────
+  /teams:
+    post:
+      summary: Create a new team
+      operationId: create_team
+      tags: [Teams]
+      security:
+        - bearerAuth: []
+      responses:
+        '201':
+          description: Team created
+
+  /teams/{team_id}/members:
+    get:
+      summary: List team members
+      operationId: list_team_members
+      tags: [Teams]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: team_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Member list
+
+  /teams/{team_id}/invite:
+    post:
+      summary: Invite a member to the team
+      operationId: invite_team_member
+      tags: [Teams]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: team_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Invite sent
+
+  /teams/{team_id}/snippets:
+    get:
+      summary: Pull shared snippets (delta)
+      operationId: list_shared_snippets
+      tags: [Teams]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: team_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Shared snippets
+    post:
+      summary: Create a shared snippet
+      operationId: create_shared_snippet
+      tags: [Teams]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: team_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '201':
+          description: Snippet created
+
+  /teams/{team_id}/snippets/{snippet_id}:
+    delete:
+      summary: Delete a shared snippet
+      operationId: delete_shared_snippet
+      tags: [Teams]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: team_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: snippet_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Snippet deleted
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              example: NOT_FOUND
+            message:
+              type: string
+              example: Resource not found
+
+    RegisterRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+
+    TokenResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        plan_tier:
+          type: string
+          enum: [free, pro, pro_ai, team]
+
+    RegisterDeviceRequest:
+      type: object
+      required: [name, platform]
+      properties:
+        name:
+          type: string
+          example: "MacBook Pro"
+        platform:
+          type: string
+          enum: [macos, windows, android, ios, web]
+
+    Device:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        platform:
+          type: string
+        last_seen_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    ClipboardItem:
+      type: object
+      required: [id, ciphertext, iv, content_type, client_created_at]
+      properties:
+        id:
+          type: string
+        ciphertext:
+          type: string
+          description: Base64-encoded AES-256-GCM ciphertext
+        iv:
+          type: string
+          description: Base64-encoded 12-byte nonce
+        content_type:
+          type: string
+          enum: [text, image, url, file]
+        tags:
+          type: array
+          items:
+            type: string
+          nullable: true
+        pinned:
+          type: boolean
+          default: false
+        device_id:
+          type: string
+          nullable: true
+        client_created_at:
+          type: integer
+          description: Unix timestamp (ms) when item was created on device
+        synced_at:
+          type: integer
+          description: Unix timestamp (ms) when item was synced to server
+
+    SyncPullResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClipboardItem'
+        has_more:
+          type: boolean
+
+    SyncPushRequest:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClipboardItem'
+          maxItems: 500
