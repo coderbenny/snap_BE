@@ -1,6 +1,8 @@
 import os
 from datetime import timedelta
 
+from sqlalchemy.pool import StaticPool
+
 
 class BaseConfig:
     SECRET_KEY = os.environ.get('SECRET_KEY', 'dev-secret-change-in-production')
@@ -23,6 +25,10 @@ class DevelopmentConfig(BaseConfig):
 class TestingConfig(BaseConfig):
     TESTING = True
     SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        'connect_args': {'check_same_thread': False},
+        'poolclass': StaticPool,
+    }
     RATELIMIT_ENABLED = False
     RATELIMIT_STORAGE_URI = 'memory://'
 
