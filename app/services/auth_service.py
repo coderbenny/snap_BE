@@ -1,5 +1,3 @@
-from datetime import datetime
-
 import jwt
 from flask import current_app
 from sqlalchemy import select
@@ -7,6 +5,7 @@ from sqlalchemy import select
 from app.extensions import db
 from app.models.refresh_token import RefreshToken
 from app.models.user import User
+from app.utils.time import utcnow
 
 
 class AuthService:
@@ -58,12 +57,12 @@ class AuthService:
         ).scalar_one_or_none()
 
         if record and record.revoked_at is None:
-            record.revoked_at = datetime.utcnow()
+            record.revoked_at = utcnow()
             db.session.commit()
 
     @staticmethod
     def _build_access_token(user: User) -> str:
-        now = datetime.utcnow()
+        now = utcnow()
         payload = {
             'sub': user.id,
             'plan_tier': user.plan_tier,
@@ -78,7 +77,7 @@ class AuthService:
         record = RefreshToken(
             user_id=user.id,
             token_hash=RefreshToken.hash(raw),
-            expires_at=datetime.utcnow() + current_app.config['JWT_REFRESH_TOKEN_EXPIRES'],
+            expires_at=utcnow() + current_app.config['JWT_REFRESH_TOKEN_EXPIRES'],
         )
         db.session.add(record)
         db.session.commit()

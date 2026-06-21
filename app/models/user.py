@@ -1,9 +1,9 @@
 import uuid
-from datetime import datetime
 
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from app.extensions import db
+from app.utils.time import utcnow
 
 
 class User(db.Model):
@@ -18,10 +18,12 @@ class User(db.Model):
         default='free',
     )
     verified_at = db.Column(db.DateTime, nullable=True)
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
 
     devices = db.relationship('Device', back_populates='user', cascade='all, delete-orphan')
-    refresh_tokens = db.relationship('RefreshToken', back_populates='user', cascade='all, delete-orphan')
+    refresh_tokens = db.relationship(
+        'RefreshToken', back_populates='user', cascade='all, delete-orphan'
+    )
 
     def set_password(self, password: str) -> None:
         self.password_hash = generate_password_hash(password, method='pbkdf2:sha256:260000')

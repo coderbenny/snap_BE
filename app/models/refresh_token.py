@@ -1,9 +1,9 @@
 import hashlib
 import secrets
 import uuid
-from datetime import datetime
 
 from app.extensions import db
+from app.utils.time import utcnow
 
 
 class RefreshToken(db.Model):
@@ -19,13 +19,13 @@ class RefreshToken(db.Model):
     token_hash = db.Column(db.String(64), unique=True, nullable=False, index=True)
     expires_at = db.Column(db.DateTime, nullable=False)
     revoked_at = db.Column(db.DateTime, nullable=True)
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
 
     user = db.relationship('User', back_populates='refresh_tokens')
 
     @property
     def is_valid(self) -> bool:
-        return self.revoked_at is None and datetime.utcnow() < self.expires_at
+        return self.revoked_at is None and utcnow() < self.expires_at
 
     @staticmethod
     def generate() -> str:

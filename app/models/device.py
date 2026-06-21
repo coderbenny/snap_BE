@@ -1,7 +1,7 @@
 import uuid
-from datetime import datetime
 
 from app.extensions import db
+from app.utils.time import utcnow
 
 
 class Device(db.Model):
@@ -20,6 +20,6 @@ class Device(db.Model):
         nullable=False,
     )
     last_seen_at = db.Column(db.DateTime, nullable=True)
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
 
     user = db.relationship('User', back_populates='devices')
