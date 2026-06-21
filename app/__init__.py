@@ -1,7 +1,9 @@
 import os
+
 from flask import Flask
+
 from app.config import config_by_name
-from app.extensions import db, migrate, limiter
+from app.extensions import db, limiter, migrate
 
 
 def create_app(config_name=None):
