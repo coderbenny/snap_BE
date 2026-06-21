@@ -26,8 +26,13 @@ def create_app(config_name=None):
 
 
 def _register_blueprints(app):
+    from app.routes.auth import auth_bp
+    from app.routes.devices import devices_bp
     from app.routes.health import health_bp
+
     app.register_blueprint(health_bp)
+    app.register_blueprint(auth_bp)
+    app.register_blueprint(devices_bp)
 
 
 def _register_error_handlers(app):
