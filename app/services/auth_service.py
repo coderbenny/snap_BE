@@ -1,0 +1,85 @@
+from datetime import datetime
+
+import jwt
+from flask import current_app
+from sqlalchemy import select
+
+from app.extensions import db
+from app.models.refresh_token import RefreshToken
+from app.models.user import User
+
+
+class AuthService:
+
+    @staticmethod
+    def register(email: str, password: str) -> User:
+        existing = db.session.execute(
+            select(User).where(User.email == email.lower())
+        ).scalar_one_or_none()
+        if existing:
+            raise ValueError('EMAIL_EXISTS')
+
+        user = User(email=email.lower())
+        user.set_password(password)
+        db.session.add(user)
+        db.session.commit()
+        return user
+
+    @staticmethod
+    def login(email: str, password: str) -> tuple[str, str]:
+        user = db.session.execute(
+            select(User).where(User.email == email.lower())
+        ).scalar_one_or_none()
+
+        if not user or not user.check_password(password):
+            raise ValueError('INVALID_CREDENTIALS')
+
+        access_token = AuthService._build_access_token(user)
+        refresh_token = AuthService._create_refresh_token(user)
+        return access_token, refresh_token
+
+    @staticmethod
+    def refresh(raw_token: str) -> str:
+        token_hash = RefreshToken.hash(raw_token)
+        record = db.session.execute(
+            select(RefreshToken).where(RefreshToken.token_hash == token_hash)
+        ).scalar_one_or_none()
+
+        if not record or not record.is_valid:
+            raise ValueError('INVALID_REFRESH_TOKEN')
+
+        return AuthService._build_access_token(record.user)
+
+    @staticmethod
+    def logout(raw_token: str) -> None:
+        token_hash = RefreshToken.hash(raw_token)
+        record = db.session.execute(
+            select(RefreshToken).where(RefreshToken.token_hash == token_hash)
+        ).scalar_one_or_none()
+
+        if record and record.revoked_at is None:
+            record.revoked_at = datetime.utcnow()
+            db.session.commit()
+
+    @staticmethod
+    def _build_access_token(user: User) -> str:
+        now = datetime.utcnow()
+        payload = {
+            'sub': user.id,
+            'plan_tier': user.plan_tier,
+            'iat': now,
+            'exp': now + current_app.config['JWT_ACCESS_TOKEN_EXPIRES'],
+        }
+        return jwt.encode(payload, current_app.config['SECRET_KEY'], algorithm='HS256')
+
+    @staticmethod
+    def _create_refresh_token(user: User) -> str:
+        raw = RefreshToken.generate()
+        record = RefreshToken(
+            user_id=user.id,
+            token_hash=RefreshToken.hash(raw),
+            expires_at=datetime.utcnow() + current_app.config['JWT_REFRESH_TOKEN_EXPIRES'],
+        )
+        db.session.add(record)
+        db.session.commit()
+        return raw
