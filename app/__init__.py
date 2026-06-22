@@ -31,6 +31,7 @@ def _register_blueprints(app):
     from app.routes.devices import devices_bp
     from app.routes.health import health_bp
     from app.routes.sync import sync_bp
+    from app.routes.teams import teams_bp
     from app.routes.webhooks import webhooks_bp
 
     app.register_blueprint(health_bp)
@@ -39,6 +40,7 @@ def _register_blueprints(app):
     app.register_blueprint(sync_bp)
     app.register_blueprint(billing_bp)
     app.register_blueprint(webhooks_bp)
+    app.register_blueprint(teams_bp)
 
 
 def _register_error_handlers(app):
