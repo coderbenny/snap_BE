@@ -111,8 +111,9 @@ class TestPull:
         item_a = make_item()
         client.post('/sync/push', json={'items': [item_a]}, headers=pro_headers)
 
+        time.sleep(0.005)  # clear sub-ms precision before capturing the boundary
         now_ms = int(time.time() * 1000)
-        time.sleep(0.05)  # ensure item_b has a later synced_at
+        time.sleep(0.005)  # ensure item_b has a later synced_at
 
         item_b = make_item()
         client.post('/sync/push', json={'items': [item_b]}, headers=pro_headers)
@@ -293,8 +294,9 @@ class TestSoftDelete:
         item = make_item()
         client.post('/sync/push', json={'items': [item]}, headers=pro_headers)
 
+        time.sleep(0.005)
         now_ms = int(time.time() * 1000)
-        time.sleep(0.05)
+        time.sleep(0.005)
         client.post('/sync/delete', json={'ids': [item['id']]}, headers=pro_headers)
 
         res = client.get(f'/sync?since={now_ms}', headers=pro_headers)
@@ -302,3 +304,51 @@ class TestSoftDelete:
         found = next((i for i in body['items'] if i['id'] == item['id']), None)
         assert found is not None
         assert found['deleted_at'] is not None
+
+
+# ── Audit-fix regression tests ───────────────────────────────────────────────
+
+class TestAuditFixes:
+    def test_push_uuid_collision_across_users_does_not_crash(self, client, app):
+        """Push with a UUID already owned by another user must return 200, not 500."""
+        headers_a = register_and_login(client, 'ua@example.com')
+        headers_b = register_and_login(client, 'ub@example.com')
+        upgrade_to_pro(app, 'ua@example.com')
+        upgrade_to_pro(app, 'ub@example.com')
+
+        shared_id = str(uuid.uuid4())
+        item_a = make_item(id=shared_id)
+        client.post('/sync/push', json={'items': [item_a]}, headers=headers_a)
+
+        item_b = make_item(id=shared_id, ciphertext='differentcipher==')
+        res = client.post('/sync/push', json={'items': [item_b]}, headers=headers_b)
+        assert res.status_code == 200
+
+        # User A's item must not be overwritten
+        pull_a = client.get('/sync', headers=headers_a).get_json()
+        assert pull_a['items'][0]['ciphertext'] == item_a['ciphertext']
+
+    def test_pull_updates_device_last_seen(self, client, app):
+        """GET /sync?device_id=<id> must update device.last_seen_at."""
+        from sqlalchemy import select
+
+        from app.extensions import db
+        from app.models.device import Device
+
+        headers = register_and_login(client)
+        upgrade_to_pro(app)
+
+        reg = client.post(
+            '/devices/register',
+            json={'name': 'My Mac', 'platform': 'macos'},
+            headers=headers,
+        )
+        device_id = reg.get_json()['id']
+
+        client.get(f'/sync?device_id={device_id}', headers=headers)
+
+        with app.app_context():
+            device = db.session.execute(
+                select(Device).where(Device.id == device_id)
+            ).scalar_one()
+            assert device.last_seen_at is not None

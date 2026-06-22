@@ -23,6 +23,7 @@ _MAX_LIMIT = 500
 def pull():
     since_raw = request.args.get('since')
     limit_raw = request.args.get('limit', _DEFAULT_LIMIT)
+    device_id = request.args.get('device_id')
 
     since: int | None = None
     if since_raw is not None:
@@ -41,6 +42,7 @@ def pull():
         return bad_request(f"'limit' must be an integer between 1 and {_MAX_LIMIT}")
 
     items, has_more = SyncService.pull(g.current_user, since, limit)
+    SyncService.update_device_last_seen(g.current_user, device_id)
 
     return {
         'items': [_serialize(item) for item in items],
@@ -53,12 +55,13 @@ def pull():
 @require_auth
 @require_plan('pro', 'pro_ai', 'team')
 def push():
+    device_id = request.args.get('device_id')
+
     try:
         data = _push_schema.load(request.get_json(silent=True) or {})
     except ValidationError as e:
         return validation_failed(e.messages)
 
-    device_id = _extract_device_id(data['items'])
     count = SyncService.push(g.current_user, data['items'])
     SyncService.update_device_last_seen(g.current_user, device_id)
 
@@ -93,9 +96,3 @@ def _serialize(item) -> dict:
     }
 
 
-def _extract_device_id(items: list[dict]) -> str | None:
-    """Pick the first non-null device_id from the batch."""
-    for item in items:
-        if item.get('device_id'):
-            return item['device_id']
-    return None

@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app.extensions import db
 from app.models.clipboard_item import ClipboardItem
@@ -41,19 +41,21 @@ class SyncService:
         now = utcnow()
         ids = [item['id'] for item in items_data]
 
-        existing = {
+        # Fetch ALL records with matching IDs (no user filter) so we can detect
+        # UUID collisions across users and skip them instead of crashing on a
+        # primary-key IntegrityError.
+        all_existing = {
             record.id: record
             for record in db.session.execute(
-                select(ClipboardItem).where(
-                    ClipboardItem.id.in_(ids),
-                    ClipboardItem.user_id == user.id,
-                )
+                select(ClipboardItem).where(ClipboardItem.id.in_(ids))
             ).scalars().all()
         }
 
         for item_data in items_data:
-            if item_data['id'] in existing:
-                record = existing[item_data['id']]
+            record = all_existing.get(item_data['id'])
+            if record:
+                if record.user_id != user.id:
+                    continue  # ID owned by another user — skip silently
                 record.ciphertext = item_data['ciphertext']
                 record.iv = item_data['iv']
                 record.content_type = item_data['content_type']
@@ -84,20 +86,18 @@ class SyncService:
         Returns count of items actually deleted (already-deleted items are excluded).
         """
         now = utcnow()
-        records = db.session.execute(
-            select(ClipboardItem).where(
+        result = db.session.execute(
+            update(ClipboardItem)
+            .where(
                 ClipboardItem.id.in_(ids),
                 ClipboardItem.user_id == user.id,
                 ClipboardItem.deleted_at.is_(None),
             )
-        ).scalars().all()
-
-        for record in records:
-            record.deleted_at = now
-            record.synced_at = now  # bump synced_at so other devices see the deletion on next pull
-
+            .values(deleted_at=now, synced_at=now)
+            .execution_options(synchronize_session=False)
+        )
         db.session.commit()
-        return len(records)
+        return result.rowcount
 
     @staticmethod
     def update_device_last_seen(user: User, device_id: str | None) -> None:
