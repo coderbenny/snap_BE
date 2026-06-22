@@ -24,6 +24,9 @@ class User(db.Model):
     refresh_tokens = db.relationship(
         'RefreshToken', back_populates='user', cascade='all, delete-orphan'
     )
+    subscription = db.relationship(
+        'Subscription', back_populates='user', uselist=False, cascade='all, delete-orphan'
+    )
 
     def set_password(self, password: str) -> None:
         self.password_hash = generate_password_hash(password, method='pbkdf2:sha256:260000')

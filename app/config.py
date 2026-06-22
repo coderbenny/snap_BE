@@ -11,6 +11,13 @@ class BaseConfig:
     JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=30)
     APP_VERSION = os.environ.get('APP_VERSION', '0.1.0')
     RATELIMIT_HEADERS_ENABLED = True
+    PAYSTACK_SECRET_KEY = os.environ.get('PAYSTACK_SECRET_KEY', '')
+    PAYSTACK_WEBHOOK_SECRET = os.environ.get('PAYSTACK_WEBHOOK_SECRET', '')
+    PAYSTACK_PLANS = {
+        'pro': os.environ.get('PAYSTACK_PLAN_PRO', ''),
+        'pro_ai': os.environ.get('PAYSTACK_PLAN_PRO_AI', ''),
+        'team': os.environ.get('PAYSTACK_PLAN_TEAM', ''),
+    }
 
 
 class DevelopmentConfig(BaseConfig):
@@ -31,6 +38,12 @@ class TestingConfig(BaseConfig):
     }
     RATELIMIT_ENABLED = False
     RATELIMIT_STORAGE_URI = 'memory://'
+    PAYSTACK_WEBHOOK_SECRET = 'test-webhook-secret'
+    PAYSTACK_PLANS = {
+        'pro': 'PLN_test_pro',
+        'pro_ai': 'PLN_test_pro_ai',
+        'team': 'PLN_test_team',
+    }
 
 
 class StagingConfig(BaseConfig):
