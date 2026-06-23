@@ -1,6 +1,7 @@
 from flask import Blueprint, g, request
 from marshmallow import ValidationError
 
+from app.extensions import limiter
 from app.middleware.auth_middleware import require_auth
 from app.middleware.plan_guard import require_plan
 from app.schemas.sync_schemas import SyncDeleteSchema, SyncPushSchema
@@ -20,6 +21,7 @@ _MAX_LIMIT = 500
 @sync_bp.get('')
 @require_auth
 @require_plan('pro', 'pro_ai', 'team')
+@limiter.limit('60 per minute')
 def pull():
     since_raw = request.args.get('since')
     limit_raw = request.args.get('limit', _DEFAULT_LIMIT)
@@ -54,6 +56,7 @@ def pull():
 @sync_bp.post('/push')
 @require_auth
 @require_plan('pro', 'pro_ai', 'team')
+@limiter.limit('60 per minute')
 def push():
     device_id = request.args.get('device_id')
 
@@ -71,6 +74,7 @@ def push():
 @sync_bp.post('/delete')
 @require_auth
 @require_plan('pro', 'pro_ai', 'team')
+@limiter.limit('60 per minute')
 def soft_delete():
     try:
         data = _delete_schema.load(request.get_json(silent=True) or {})

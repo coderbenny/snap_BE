@@ -1,9 +1,15 @@
 import os
+import time
+import uuid
 
-from flask import Flask
+import structlog
+from flask import Flask, g, request
 
 from app.config import config_by_name
 from app.extensions import db, limiter, migrate
+from app.logging_config import configure_logging
+
+_logger = structlog.get_logger('snap.requests')
 
 
 def create_app(config_name=None):
@@ -13,6 +19,9 @@ def create_app(config_name=None):
     app = Flask(__name__)
     app.config.from_object(config_by_name[config_name])
 
+    configure_logging(debug=app.debug)
+    _init_sentry(app)
+
     from app import models  # noqa: F401 — registers all tables with SQLAlchemy metadata
 
     db.init_app(app)
@@ -20,12 +29,27 @@ def create_app(config_name=None):
     limiter.init_app(app)
 
     _register_blueprints(app)
+    _register_hooks(app)
     _register_error_handlers(app)
 
     return app
 
 
-def _register_blueprints(app):
+def _init_sentry(app: Flask) -> None:
+    dsn = app.config.get('SENTRY_DSN', '')
+    if not dsn:
+        return
+    import sentry_sdk
+    from sentry_sdk.integrations.flask import FlaskIntegration
+    sentry_sdk.init(
+        dsn=dsn,
+        integrations=[FlaskIntegration()],
+        traces_sample_rate=0.1,
+        send_default_pii=False,
+    )
+
+
+def _register_blueprints(app: Flask) -> None:
     from app.routes.auth import auth_bp
     from app.routes.billing import billing_bp
     from app.routes.devices import devices_bp
@@ -43,7 +67,41 @@ def _register_blueprints(app):
     app.register_blueprint(teams_bp)
 
 
-def _register_error_handlers(app):
+def _register_hooks(app: Flask) -> None:
+    @app.before_request
+    def _before_request():
+        g.request_id = str(uuid.uuid4())
+        g.start_time = time.monotonic()
+        structlog.contextvars.clear_contextvars()
+        structlog.contextvars.bind_contextvars(request_id=g.request_id)
+
+    @app.after_request
+    def _after_request(response):
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+        response.headers['X-Frame-Options'] = 'DENY'
+        response.headers['X-XSS-Protection'] = '1; mode=block'
+        response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+        if not app.debug and not app.testing:
+            response.headers['Strict-Transport-Security'] = (
+                'max-age=63072000; includeSubDomains'
+            )
+
+        response.headers['X-Request-ID'] = g.get('request_id', '')
+
+        if hasattr(g, 'start_time'):
+            duration_ms = round((time.monotonic() - g.start_time) * 1000, 2)
+            _logger.info(
+                'request_completed',
+                method=request.method,
+                path=request.path,
+                status=response.status_code,
+                duration_ms=duration_ms,
+            )
+
+        return response
+
+
+def _register_error_handlers(app: Flask) -> None:
     from app.utils.errors import error_response
 
     @app.errorhandler(404)
@@ -56,4 +114,5 @@ def _register_error_handlers(app):
 
     @app.errorhandler(500)
     def handle_500(e):
+        _logger.exception('unhandled_exception', exc_info=e)
         return error_response('INTERNAL_ERROR', 'An unexpected error occurred', 500)

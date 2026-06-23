@@ -15,6 +15,7 @@ _logout_schema = LogoutSchema()
 
 
 @auth_bp.post('/register')
+@limiter.limit('10 per minute')
 def register():
     try:
         data = _register_schema.load(request.get_json(silent=True) or {})
@@ -48,6 +49,7 @@ def login():
 
 
 @auth_bp.post('/refresh')
+@limiter.limit('30 per minute')
 def refresh():
     try:
         data = _refresh_schema.load(request.get_json(silent=True) or {})

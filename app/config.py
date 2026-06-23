@@ -11,6 +11,7 @@ class BaseConfig:
     JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=30)
     APP_VERSION = os.environ.get('APP_VERSION', '0.1.0')
     RATELIMIT_HEADERS_ENABLED = True
+    SENTRY_DSN = os.environ.get('SENTRY_DSN', '')
     PAYSTACK_SECRET_KEY = os.environ.get('PAYSTACK_SECRET_KEY', '')
     PAYSTACK_WEBHOOK_SECRET = os.environ.get('PAYSTACK_WEBHOOK_SECRET', '')
     PAYSTACK_PLANS = {
@@ -46,15 +47,25 @@ class TestingConfig(BaseConfig):
     }
 
 
+_POOL_OPTIONS = {
+    'pool_size': 10,
+    'pool_recycle': 300,  # prevent "server has gone away" on idle connections
+    'pool_pre_ping': True,
+    'max_overflow': 20,
+}
+
+
 class StagingConfig(BaseConfig):
     DEBUG = False
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL')
+    SQLALCHEMY_ENGINE_OPTIONS = _POOL_OPTIONS
     RATELIMIT_STORAGE_URI = os.environ.get('REDIS_URL', 'memory://')
 
 
 class ProductionConfig(BaseConfig):
     DEBUG = False
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL')
+    SQLALCHEMY_ENGINE_OPTIONS = _POOL_OPTIONS
     RATELIMIT_STORAGE_URI = os.environ.get('REDIS_URL')
 
 
