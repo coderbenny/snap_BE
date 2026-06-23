@@ -73,6 +73,19 @@ class TeamService:
         if existing_member:
             raise ValueError('User is already a member of this team')
 
+        # Expire any outstanding open invite for this address to prevent token
+        # accumulation (old tokens could be replayed if the member later leaves).
+        open_invite = db.session.execute(
+            select(TeamInvite).where(
+                TeamInvite.team_id == team_id,
+                TeamInvite.email == email.lower(),
+                TeamInvite.accepted_at.is_(None),
+                TeamInvite.expires_at > utcnow(),
+            )
+        ).scalar_one_or_none()
+        if open_invite:
+            open_invite.expires_at = utcnow()
+
         raw = TeamInvite.generate()
         token_hash = hashlib.sha256(raw.encode()).hexdigest()
 
@@ -98,6 +111,9 @@ class TeamService:
         ).scalar_one_or_none()
 
         if not invite or not invite.is_valid:
+            raise LookupError('Invite token is invalid or has expired')
+
+        if invite.email != user.email.lower():
             raise LookupError('Invite token is invalid or has expired')
 
         existing = TeamService.get_membership(user, invite.team_id)

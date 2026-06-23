@@ -82,5 +82,6 @@ def downgrade():
     op.drop_index('ix_shared_snippets_team_synced', table_name='shared_snippets')
     op.drop_table('shared_snippets')
     op.drop_table('team_members')
+    sa.Enum(name='member_role').drop(op.get_bind(), checkfirst=True)
     op.drop_index('ix_teams_owner_id', table_name='teams')
     op.drop_table('teams')

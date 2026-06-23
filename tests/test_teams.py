@@ -197,6 +197,32 @@ class TestJoin:
         res = client.post('/teams/join', json={'token': token}, headers=second_h)
         assert res.status_code == 404
 
+    def test_wrong_email_cannot_use_token(self, client, app):
+        """Token issued for A cannot be accepted by B — IDOR fix."""
+        _, token = self._setup_invite(client, app, 'intended@example.com')
+        other_h = team_headers(client, app, 'other@example.com')
+
+        res = client.post('/teams/join', json={'token': token}, headers=other_h)
+        assert res.status_code == 404
+
+    def test_reinvite_supersedes_old_token(self, client, app):
+        """Creating a second invite for the same email expires the first token."""
+        team_id, token1 = self._setup_invite(client, app)
+        owner_h = team_headers(client, app, 'owner@example.com')
+
+        # Second invite for the same email on the same team
+        token2 = client.post(
+            f'/teams/{team_id}/invite',
+            json={'email': 'invitee@example.com'},
+            headers=owner_h,
+        ).get_json()['invite_token']
+
+        invitee_h = team_headers(client, app, 'invitee@example.com')
+        res1 = client.post('/teams/join', json={'token': token1}, headers=invitee_h)
+        res2 = client.post('/teams/join', json={'token': token2}, headers=invitee_h)
+        assert res1.status_code == 404  # first token expired
+        assert res2.status_code == 200  # second token works
+
     def test_already_member_rejected(self, client, app):
         import hashlib
         from datetime import timedelta
@@ -396,3 +422,21 @@ class TestSnippets:
         headers, team_id = self._make_team(client, app)
         res = client.get(f'/teams/{team_id}/snippets?since=abc', headers=headers)
         assert res.status_code == 400
+
+    def test_next_since_not_advanced_while_pages_remain(self, client, app):
+        """next_since must stay pinned when has_more=True to avoid skipping rows."""
+        headers, team_id = self._make_team(client, app)
+        for _ in range(4):
+            client.post(f'/teams/{team_id}/snippets', json=SNIPPET, headers=headers)
+
+        since = 0
+        res = client.get(f'/teams/{team_id}/snippets?since={since}&limit=2', headers=headers)
+        body = res.get_json()
+        assert body['has_more'] is True
+        assert body['next_since'] == since
+
+    def test_iv_too_short_rejected(self, client, app):
+        headers, team_id = self._make_team(client, app)
+        bad = {**SNIPPET, 'iv': 'tooshort'}
+        res = client.post(f'/teams/{team_id}/snippets', json=bad, headers=headers)
+        assert res.status_code == 422

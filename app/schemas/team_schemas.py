@@ -16,5 +16,5 @@ class AcceptInviteSchema(Schema):
 class SharedSnippetSchema(Schema):
     title = fields.Str(required=True, validate=validate.Length(min=1, max=255))
     ciphertext = fields.Str(required=True, validate=validate.Length(min=1))
-    iv = fields.Str(required=True, validate=validate.Length(min=1, max=24))
+    iv = fields.Str(required=True, validate=validate.Length(min=16, max=24))
     tags = fields.List(fields.Str(), load_default=None, allow_none=True)

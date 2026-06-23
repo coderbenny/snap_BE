@@ -149,7 +149,7 @@ def list_snippets(team_id):
     return {
         'items': [_serialize_snippet(s) for s in items],
         'has_more': has_more,
-        'next_since': to_unix_ms(items[-1].synced_at) if items else (since or 0),
+        'next_since': to_unix_ms(items[-1].synced_at) if items and not has_more else (since or 0),
     }
 
 
