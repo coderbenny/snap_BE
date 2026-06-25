@@ -9,4 +9,4 @@ from app import create_app  # noqa: E402
 app = create_app(os.environ.get('FLASK_ENV', 'development'))
 
 if __name__ == '__main__':
-    app.run()
+    app.run(port=5559)
