@@ -1,7 +1,8 @@
-from flask import Blueprint, request
+from flask import Blueprint, g, request
 from marshmallow import ValidationError
 
 from app.extensions import limiter
+from app.middleware.auth_middleware import require_auth
 from app.schemas.auth_schemas import LoginSchema, LogoutSchema, RefreshSchema, RegisterSchema
 from app.services.auth_service import AuthService
 from app.utils.errors import conflict, unauthorized, validation_failed
@@ -73,3 +74,14 @@ def logout():
 
     AuthService.logout(data['refresh_token'])
     return '', 204
+
+
+@auth_bp.get('/me')
+@require_auth
+def me():
+    user = g.current_user
+    return {
+        'id': user.id,
+        'email': user.email,
+        'plan': user.plan_tier,
+    }
