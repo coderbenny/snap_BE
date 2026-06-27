@@ -64,8 +64,13 @@ class BillingService:
     ]
 
     @staticmethod
-    def initialize_transaction(user: User, tier: str, callback_url: str | None) -> str:
-        """Initialize a Paystack transaction. Returns the authorization_url."""
+    def initialize_transaction(user: User, tier: str, callback_url: str | None) -> dict:
+        """Initialize a Paystack transaction.
+
+        Returns a dict with authorization_url, access_code, and reference so
+        the frontend can choose between inline popup (access_code) or redirect
+        (authorization_url).
+        """
         plan_code = current_app.config.get('PAYSTACK_PLANS', {}).get(tier)
         if not plan_code:
             raise ValueError(f"No Paystack plan configured for tier '{tier}'")
@@ -79,8 +84,25 @@ class BillingService:
         if callback_url:
             payload['callback_url'] = callback_url
 
-        data = _paystack_post('/transaction/initialize', payload)
-        return data['data']['authorization_url']
+        body = _paystack_post('/transaction/initialize', payload)
+        d = body['data']
+        return {
+            'authorization_url': d['authorization_url'],
+            'access_code': d['access_code'],
+            'reference': d['reference'],
+        }
+
+    @staticmethod
+    def verify_transaction(reference: str) -> dict:
+        """Verify a transaction by reference. Returns plan tier if successful."""
+        body = _paystack_get(f'/transaction/verify/{reference}')
+        d = body['data']
+        if d.get('status') != 'success':
+            raise ValueError(f"Transaction not successful: {d.get('status')}")
+        plan_code = (d.get('plan') or {}).get('plan_code') or \
+                    (d.get('plan_object') or {}).get('plan_code', '')
+        tier = BillingService._tier_from_plan_code(plan_code) if plan_code else None
+        return {'status': d['status'], 'tier': tier, 'reference': reference}
 
     @staticmethod
     def get_portal_link(user: User) -> str:

@@ -25,7 +25,7 @@ def subscribe():
         return validation_failed(e.messages)
 
     try:
-        url = BillingService.initialize_transaction(
+        result = BillingService.initialize_transaction(
             g.current_user,
             data['tier'],
             data.get('callback_url'),
@@ -35,7 +35,27 @@ def subscribe():
     except Exception:
         return server_error('Failed to initialize payment. Please try again.')
 
-    return {'authorization_url': url}, 200
+    # Return all three fields so the frontend can use the inline popup
+    # (access_code) or fall back to a redirect (authorization_url).
+    return result, 200
+
+
+@billing_bp.get('/verify/<reference>')
+@require_auth
+def verify(reference: str):
+    """
+    Called by the frontend after the Paystack popup reports success.
+    The webhook may have already updated the plan; this is a confirmation
+    check so the UI can update immediately without waiting for SSE.
+    """
+    try:
+        result = BillingService.verify_transaction(reference)
+    except ValueError as e:
+        return bad_request(str(e))
+    except Exception:
+        return server_error('Verification failed. Please refresh the page.')
+
+    return result, 200
 
 
 @billing_bp.post('/portal')
