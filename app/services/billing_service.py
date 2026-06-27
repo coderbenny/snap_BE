@@ -10,6 +10,7 @@ from sqlalchemy import select
 from app.extensions import db
 from app.models.subscription import Subscription
 from app.models.user import User
+from app.services.sse_manager import sse_manager
 from app.utils.time import utcnow
 
 logger = logging.getLogger(__name__)
@@ -166,6 +167,7 @@ class BillingService:
 
         user.plan_tier = tier
         db.session.commit()
+        sse_manager.publish(user.id, 'plan_changed', {'plan': tier})
 
     @staticmethod
     def _on_subscription_create(data: dict) -> None:
@@ -219,6 +221,7 @@ class BillingService:
         sub.status = 'cancelled'
         sub.user.plan_tier = 'free'
         db.session.commit()
+        sse_manager.publish(sub.user.id, 'plan_changed', {'plan': 'free'})
 
     @staticmethod
     def _on_invoice_payment_failed(data: dict) -> None:
