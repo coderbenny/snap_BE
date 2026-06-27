@@ -16,13 +16,14 @@ depends_on = None
 
 
 def upgrade():
-    op.add_column('devices', sa.Column('app_version', sa.String(20), nullable=True))
-
-    # Back-fill last_seen_at for any existing rows that have NULL, then tighten
     op.execute("UPDATE devices SET last_seen_at = created_at WHERE last_seen_at IS NULL")
-    op.alter_column('devices', 'last_seen_at', nullable=False)
+
+    with op.batch_alter_table('devices') as batch_op:
+        batch_op.add_column(sa.Column('app_version', sa.String(20), nullable=True))
+        batch_op.alter_column('last_seen_at', nullable=False)
 
 
 def downgrade():
-    op.alter_column('devices', 'last_seen_at', nullable=True)
-    op.drop_column('devices', 'app_version')
+    with op.batch_alter_table('devices') as batch_op:
+        batch_op.alter_column('last_seen_at', nullable=True)
+        batch_op.drop_column('app_version')

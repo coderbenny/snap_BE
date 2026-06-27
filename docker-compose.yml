@@ -25,7 +25,7 @@ services:
       SECRET_KEY: dev-secret-key-change-in-production
       APP_VERSION: "0.1.0"
     ports:
-      - "5000:5000"
+      - "5559:5559"
     depends_on:
       db:
         condition: service_healthy
