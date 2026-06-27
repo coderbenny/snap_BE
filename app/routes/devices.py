@@ -19,7 +19,13 @@ def register_device():
     except ValidationError as e:
         return validation_failed(e.messages)
 
-    device = DeviceService.register(g.current_user, data['name'], data['platform'])
+    device = DeviceService.register(
+        g.current_user,
+        data['device_id'],
+        data['name'],
+        data['platform'],
+        data.get('app_version'),
+    )
     return _serialize(device), 201
 
 
@@ -43,6 +49,7 @@ def _serialize(device) -> dict:
         'id': device.id,
         'name': device.name,
         'platform': device.platform,
+        'app_version': device.app_version,
         'last_seen_at': device.last_seen_at.isoformat() if device.last_seen_at else None,
         'created_at': device.created_at.isoformat(),
     }

@@ -7,7 +7,9 @@ from app.utils.time import utcnow
 class Device(db.Model):
     __tablename__ = 'devices'
 
-    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    # Client-supplied stable UUID (stored in Keychain / DPAPI on the device).
+    # Used as the primary key so upserts are trivial.
+    id = db.Column(db.String(36), primary_key=True)
     user_id = db.Column(
         db.String(36),
         db.ForeignKey('users.id', ondelete='CASCADE'),
@@ -19,7 +21,8 @@ class Device(db.Model):
         db.Enum('macos', 'windows', 'android', 'ios', 'web', name='platform'),
         nullable=False,
     )
-    last_seen_at = db.Column(db.DateTime, nullable=True)
+    app_version = db.Column(db.String(20), nullable=True)
+    last_seen_at = db.Column(db.DateTime, nullable=False, default=utcnow)
     created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
 
     user = db.relationship('User', back_populates='devices')
