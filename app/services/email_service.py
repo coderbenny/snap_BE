@@ -15,19 +15,19 @@ class EmailService:
 
     @staticmethod
     def send_welcome(to_email: str) -> None:
-        subject = 'Welcome to SNAP'
+        subject = 'Welcome to Snapit'
         html = _render_welcome(to_email)
         EmailService._send(to_email, subject, html)
 
     @staticmethod
     def send_subscription_confirmed(to_email: str, tier: str) -> None:
-        subject = f'Your SNAP {tier.replace("_", " ").title()} plan is active'
+        subject = f'Your Snapit {tier.replace("_", " ").title()} plan is active'
         html = _render_subscription_confirmed(to_email, tier)
         EmailService._send(to_email, subject, html)
 
     @staticmethod
     def send_payment_failed(to_email: str) -> None:
-        subject = 'SNAP — payment failed, action required'
+        subject = 'Snapit — payment failed, action required'
         html = _render_payment_failed(to_email)
         EmailService._send(to_email, subject, html)
 
@@ -106,10 +106,10 @@ def _base(title: str, body: str) -> str:
     <tr><td align="center">
       <table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;border:1px solid #e5e7eb;padding:40px;">
         <tr><td>
-          <p style="margin:0 0 24px;font-size:22px;font-weight:700;color:#111827;">SNAP</p>
+          <p style="margin:0 0 24px;font-size:22px;font-weight:700;color:#111827;">Snapit</p>
           {body}
           <p style="margin:32px 0 0;font-size:12px;color:#9ca3af;">
-            You received this email because you have a SNAP account.
+            You received this email because you have a Snapit account.
           </p>
         </td></tr>
       </table>
@@ -121,17 +121,17 @@ def _base(title: str, body: str) -> str:
 
 def _render_welcome(email: str) -> str:
     body = f"""
-      <h1 style="margin:0 0 12px;font-size:20px;color:#111827;">Welcome to SNAP</h1>
+      <h1 style="margin:0 0 12px;font-size:20px;color:#111827;">Welcome to Snapit</h1>
       <p style="margin:0 0 16px;font-size:15px;color:#374151;line-height:1.6;">
         Your account (<strong>{email}</strong>) is ready. Download the app for your platform
         and start syncing your clipboard instantly.
       </p>
-      <a href="https://snapclip.app/download"
+      <a href="https://snapit.ink/download"
          style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;
                 padding:12px 24px;border-radius:8px;font-size:14px;font-weight:600;">
-        Download SNAP
+        Download Snapit
       </a>"""
-    return _base('Welcome to SNAP', body)
+    return _base('Welcome to Snapit', body)
 
 
 def _render_subscription_confirmed(email: str, tier: str) -> str:
@@ -145,24 +145,24 @@ def _render_subscription_confirmed(email: str, tier: str) -> str:
         all your devices. Your subscription renews automatically — manage it any time from
         the billing page.
       </p>
-      <a href="https://snapclip.app/billing"
+      <a href="https://snapit.ink/billing"
          style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;
                 padding:12px 24px;border-radius:8px;font-size:14px;font-weight:600;">
         View billing
       </a>"""
-    return _base(f'SNAP {tier_label} plan active', body)
+    return _base(f'Snapit {tier_label} plan active', body)
 
 
 def _render_payment_failed(email: str) -> str:
     body = """
       <h1 style="margin:0 0 12px;font-size:20px;color:#b91c1c;">Payment failed</h1>
       <p style="margin:0 0 16px;font-size:15px;color:#374151;line-height:1.6;">
-        We were unable to charge your payment method for your SNAP subscription renewal.
+        We were unable to charge your payment method for your Snapit subscription renewal.
         Please update your card details to keep your plan active.
       </p>
-      <a href="https://snapclip.app/billing"
+      <a href="https://snapit.ink/billing"
          style="display:inline-block;background:#dc2626;color:#fff;text-decoration:none;
                 padding:12px 24px;border-radius:8px;font-size:14px;font-weight:600;">
         Update payment method
       </a>"""
-    return _base('SNAP — payment failed', body)
+    return _base('Snapit — payment failed', body)

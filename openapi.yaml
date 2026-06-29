@@ -1,7 +1,7 @@
 openapi: 3.1.0
 
 info:
-  title: SNAP API
+  title: Snapit API
   version: 0.1.0
   description: >
     Universal Snippet & Clipboard Vault — REST API serving the desktop, mobile,
@@ -11,7 +11,7 @@ info:
 servers:
   - url: http://localhost:5000
     description: Local development
-  - url: https://api.snapapp.io
+  - url: https://api.snapit.ink
     description: Production
 
 tags:

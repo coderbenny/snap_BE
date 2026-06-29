@@ -1,4 +1,4 @@
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 
 from app.extensions import db
 from app.models.clipboard_item import ClipboardItem
@@ -98,6 +98,17 @@ class SyncService:
         )
         db.session.commit()
         return result.rowcount
+
+    @staticmethod
+    def count_clips(user: User) -> int:
+        """Return the number of non-deleted clips for the user."""
+        result = db.session.execute(
+            select(func.count()).select_from(ClipboardItem).where(
+                ClipboardItem.user_id == user.id,
+                ClipboardItem.deleted_at.is_(None),
+            )
+        ).scalar()
+        return result or 0
 
     @staticmethod
     def update_device_last_seen(user: User, device_id: str | None) -> None:

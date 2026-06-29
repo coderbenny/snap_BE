@@ -53,6 +53,16 @@ def pull():
     }
 
 
+@sync_bp.get('/stats')
+@require_auth
+@require_plan('pro', 'pro_ai', 'team')
+@limiter.limit('30 per minute')
+def stats():
+    """Return the total number of non-deleted clips for the authenticated user."""
+    count = SyncService.count_clips(g.current_user)
+    return {'clip_count': count}
+
+
 @sync_bp.post('/push')
 @require_auth
 @require_plan('pro', 'pro_ai', 'team')

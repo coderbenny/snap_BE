@@ -21,7 +21,7 @@ class BaseConfig:
     }
     # Email — Resend is primary; Google SMTP is the fallback.
     RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '')
-    MAIL_FROM = os.environ.get('MAIL_FROM', 'SNAP <noreply@snapclip.app>')
+    MAIL_FROM = os.environ.get('MAIL_FROM', 'Snapit <hello@snapit.ink>')
     SMTP_HOST = os.environ.get('SMTP_HOST', 'smtp.gmail.com')
     SMTP_PORT = int(os.environ.get('SMTP_PORT', '587'))
     SMTP_USERNAME = os.environ.get('SMTP_USERNAME', '')

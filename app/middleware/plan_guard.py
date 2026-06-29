@@ -20,7 +20,7 @@ def require_plan(*tiers: str):
             if user_tier not in tiers:
                 return forbidden(
                     'This feature requires a Pro subscription — '
-                    'upgrade at https://snapapp.io/billing'
+                    'upgrade at https://snapit.ink/billing'
                 )
             return f(*args, **kwargs)
         return decorated

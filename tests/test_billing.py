@@ -172,12 +172,12 @@ class TestSubscribe:
         with patch(target, return_value=mock_resp) as mock_post:
             client.post(
                 '/billing/subscribe',
-                json={'tier': 'pro', 'callback_url': 'https://snapapp.io/billing/success'},
+                json={'tier': 'pro', 'callback_url': 'https://snapit.ink/billing/success'},
                 headers=headers,
             )
             call_kwargs = mock_post.call_args
             payload_sent = call_kwargs.kwargs.get('json') or call_kwargs.args[1]
-            assert payload_sent.get('callback_url') == 'https://snapapp.io/billing/success'
+            assert payload_sent.get('callback_url') == 'https://snapit.ink/billing/success'
 
     def test_invalid_tier(self, client):
         headers = register_and_login(client)
