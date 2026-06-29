@@ -1,3 +1,5 @@
+import logging
+
 import jwt
 from flask import current_app
 from sqlalchemy import select
@@ -6,6 +8,8 @@ from app.extensions import db
 from app.models.refresh_token import RefreshToken
 from app.models.user import User
 from app.utils.time import utcnow
+
+logger = logging.getLogger(__name__)
 
 
 class AuthService:
@@ -22,6 +26,13 @@ class AuthService:
         user.set_password(password)
         db.session.add(user)
         db.session.commit()
+
+        try:
+            from app.services.email_service import EmailService
+            EmailService.send_welcome(user.email)
+        except Exception:
+            logger.exception('Failed to send welcome email to %s', user.email)
+
         return user
 
     @staticmethod

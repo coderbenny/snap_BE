@@ -45,11 +45,11 @@ def subscribe():
 def verify(reference: str):
     """
     Called by the frontend after the Paystack popup reports success.
-    The webhook may have already updated the plan; this is a confirmation
-    check so the UI can update immediately without waiting for SSE.
+    Verifies with Paystack and activates the plan in the DB so the UI
+    updates immediately, even on localhost where webhooks can't arrive.
     """
     try:
-        result = BillingService.verify_transaction(reference)
+        result = BillingService.verify_transaction(g.current_user, reference)
     except ValueError as e:
         return bad_request(str(e))
     except Exception:

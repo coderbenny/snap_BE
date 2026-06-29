@@ -19,6 +19,13 @@ class BaseConfig:
         'pro_ai': os.environ.get('PAYSTACK_PLAN_PRO_AI', ''),
         'team': os.environ.get('PAYSTACK_PLAN_TEAM', ''),
     }
+    # Email — Resend is primary; Google SMTP is the fallback.
+    RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '')
+    MAIL_FROM = os.environ.get('MAIL_FROM', 'SNAP <noreply@snapclip.app>')
+    SMTP_HOST = os.environ.get('SMTP_HOST', 'smtp.gmail.com')
+    SMTP_PORT = int(os.environ.get('SMTP_PORT', '587'))
+    SMTP_USERNAME = os.environ.get('SMTP_USERNAME', '')
+    SMTP_PASSWORD = os.environ.get('SMTP_PASSWORD', '')
 
 
 class DevelopmentConfig(BaseConfig):

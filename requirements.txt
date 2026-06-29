@@ -13,3 +13,4 @@ PyMySQL==1.1.1
 structlog==24.4.0
 sentry-sdk[flask]==2.14.0
 redis==5.0.8
+resend==2.3.0

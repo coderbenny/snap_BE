@@ -21,11 +21,16 @@ def paystack_webhook():
 
     try:
         payload = json.loads(raw_body)
-        event_type = payload.get('event', '')
-        data = payload.get('data') or {}
+    except json.JSONDecodeError:
+        logger.error('Paystack webhook: malformed JSON body=%s', raw_body[:200])
+        return {'status': 'ok'}, 200
+
+    event_type = payload.get('event', '')
+    data = payload.get('data') or {}
+    try:
         BillingService.handle_event(event_type, data)
-    except (json.JSONDecodeError, Exception):
-        logger.exception('Failed to process Paystack webhook')
+    except Exception:
+        logger.exception('Paystack webhook: unhandled error for event=%s', event_type)
 
     # Always 200 — Paystack retries on non-2xx.
     return {'status': 'ok'}, 200

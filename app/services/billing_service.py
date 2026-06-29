@@ -93,16 +93,64 @@ class BillingService:
         }
 
     @staticmethod
-    def verify_transaction(reference: str) -> dict:
-        """Verify a transaction by reference. Returns plan tier if successful."""
+    def verify_transaction(user: User, reference: str) -> dict:
+        """Verify a Paystack transaction and activate the plan in the DB.
+
+        This is the authoritative activation path for dev/staging where
+        Paystack webhooks cannot reach localhost.  The webhook handler runs
+        the same logic, so concurrent updates are idempotent.
+        """
         body = _paystack_get(f'/transaction/verify/{reference}')
         d = body['data']
+
         if d.get('status') != 'success':
             raise ValueError(f"Transaction not successful: {d.get('status')}")
-        plan_code = (d.get('plan') or {}).get('plan_code') or \
-                    (d.get('plan_object') or {}).get('plan_code', '')
+
+        # Paystack returns `plan` as a plain string (the plan code) in the
+        # verify response, NOT as a nested object.  Calling .get() on a str
+        # raises AttributeError — guard with isinstance before using it.
+        raw_plan = d.get('plan') or ''
+        if isinstance(raw_plan, dict):
+            plan_code = raw_plan.get('plan_code', '')
+        else:
+            plan_code = raw_plan  # already the plan code string
+
+        # plan_object carries the canonical plan details; use as fallback.
+        if not plan_code:
+            plan_code = (d.get('plan_object') or {}).get('plan_code', '')
+
         tier = BillingService._tier_from_plan_code(plan_code) if plan_code else None
-        return {'status': d['status'], 'tier': tier, 'reference': reference}
+
+        # Activate the plan in the DB so the UI reflects immediately, even
+        # when the Paystack webhook hasn't arrived yet (e.g. on localhost).
+        if tier and user.plan_tier != tier:
+            now = utcnow()
+            customer_code = (d.get('customer') or {}).get('customer_code')
+
+            sub = db.session.execute(
+                select(Subscription).where(Subscription.user_id == user.id)
+            ).scalar_one_or_none()
+
+            if sub:
+                sub.tier = tier
+                sub.status = 'active'
+                sub.expires_at = now + timedelta(days=_PROVISIONAL_EXPIRY_DAYS)
+                if customer_code:
+                    sub.paystack_customer_code = customer_code
+            else:
+                db.session.add(Subscription(
+                    user_id=user.id,
+                    tier=tier,
+                    status='active',
+                    paystack_customer_code=customer_code,
+                    expires_at=now + timedelta(days=_PROVISIONAL_EXPIRY_DAYS),
+                ))
+
+            user.plan_tier = tier
+            db.session.commit()
+            logger.info('Plan activated via verify: user=%s tier=%s', user.id, tier)
+
+        return {'status': d['status'], 'tier': tier or user.plan_tier, 'reference': reference}
 
     @staticmethod
     def get_portal_link(user: User) -> str:
@@ -120,6 +168,9 @@ class BillingService:
     @staticmethod
     def verify_webhook_signature(raw_body: bytes, signature: str) -> bool:
         secret = current_app.config.get('PAYSTACK_WEBHOOK_SECRET', '')
+        if not secret:
+            logger.error('PAYSTACK_WEBHOOK_SECRET is not set — rejecting all webhooks')
+            return False
         expected = hmac.new(
             key=secret.encode(),
             msg=raw_body,
@@ -191,6 +242,12 @@ class BillingService:
         db.session.commit()
         sse_manager.publish(user.id, 'plan_changed', {'plan': tier})
 
+        try:
+            from app.services.email_service import EmailService
+            EmailService.send_subscription_confirmed(user.email, tier)
+        except Exception:
+            logger.exception('Failed to send subscription email to %s', user.email)
+
     @staticmethod
     def _on_subscription_create(data: dict) -> None:
         sub_code = data.get('subscription_code')
@@ -257,6 +314,11 @@ class BillingService:
         if sub:
             sub.status = 'past_due'
             db.session.commit()
+            try:
+                from app.services.email_service import EmailService
+                EmailService.send_payment_failed(sub.user.email)
+            except Exception:
+                logger.exception('Failed to send payment-failed email for sub=%s', sub_code)
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 
