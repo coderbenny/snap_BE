@@ -65,23 +65,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Copy compose file to server
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.SERVER_IP }}
-          username: ${{ secrets.SERVER_USERNAME }}
-          password: ${{ secrets.SERVER_PASSWORD }}
-          source: docker-compose.prod.yml
-          target: ${{ env.DEPLOY_PATH }}
-          overwrite: true
+      - name: Encode compose file
+        id: compose
+        run: echo "b64=$(base64 -w 0 docker-compose.prod.yml)" >> $GITHUB_OUTPUT
 
       - name: Deploy to server
         uses: appleboy/ssh-action@v1.0.3
+        env:
+          COMPOSE_B64: ${{ steps.compose.outputs.b64 }}
         with:
           host: ${{ secrets.SERVER_IP }}
           username: ${{ secrets.SERVER_USERNAME }}
           password: ${{ secrets.SERVER_PASSWORD }}
           command_timeout: 15m
+          envs: COMPOSE_B64
           script: |
             set -euo pipefail
 
@@ -91,6 +88,9 @@ jobs:
             COMPOSE_PROJECT="${{ env.COMPOSE_PROJECT_NAME }}"
 
             cd "$DEPLOY_PATH"
+
+            # ── Sync compose file from repo ────────────────────────────────────
+            echo "$COMPOSE_B64" | base64 -d > docker-compose.prod.yml
 
             # ── Validate host services ─────────────────────────────────────────
             echo "Checking Redis (6379)..."
