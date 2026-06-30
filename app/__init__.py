@@ -124,6 +124,10 @@ def _register_error_handlers(app: Flask) -> None:
     def handle_405(e):
         return error_response('METHOD_NOT_ALLOWED', 'Method not allowed', 405)
 
+    @app.errorhandler(429)
+    def handle_429(e):
+        return error_response('RATE_LIMITED', 'Too many requests. Please slow down.', 429)
+
     @app.errorhandler(500)
     def handle_500(e):
         _logger.exception('unhandled_exception', exc_info=e)

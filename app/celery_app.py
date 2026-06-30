@@ -13,6 +13,7 @@ def init_celery(app):
                 return self.run(*args, **kwargs)
 
     celery.config_from_object(app.config, namespace='CELERY')
+    celery.conf.include = ['app.tasks.email_tasks']
     celery.Task = ContextTask
 
     celery.conf.beat_schedule = {

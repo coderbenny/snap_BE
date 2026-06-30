@@ -47,7 +47,7 @@ services:
   celery_beat:
     image: ${REGISTRY_IMAGE}:${IMAGE_TAG:-latest}
     network_mode: host
-    command: celery -A wsgi.celery beat --loglevel=info --scheduler celery.beat.PersistentScheduler
+    command: celery -A wsgi.celery beat --loglevel=info --scheduler celery.beat.PersistentScheduler --schedule /tmp/celerybeat-schedule
     environment:
       <<: *common-env
     restart: unless-stopped
