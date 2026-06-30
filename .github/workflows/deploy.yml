@@ -103,7 +103,7 @@ jobs:
             echo "Restarting services..."
             REGISTRY_IMAGE="$REGISTRY_IMAGE" IMAGE_TAG="$IMAGE_TAG" \
               APP_VERSION="${{ github.sha }}" \
-              docker compose -f docker-compose.prod.yml up -d
+              docker compose -f docker-compose.prod.yml up -d api celery_worker celery_beat
 
             # ── Health check ───────────────────────────────────────────────────
             echo "Waiting for API to become healthy..."

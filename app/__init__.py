@@ -28,6 +28,9 @@ def create_app(config_name=None):
     migrate.init_app(app, db)
     limiter.init_app(app)
 
+    from app.celery_app import init_celery
+    init_celery(app)
+
     _register_blueprints(app)
     _register_hooks(app)
     _register_error_handlers(app)

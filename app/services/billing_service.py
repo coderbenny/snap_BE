@@ -298,9 +298,16 @@ class BillingService:
             return
 
         sub.status = 'cancelled'
-        sub.user.plan_tier = 'free'
+        user = sub.user
+        user.plan_tier = 'free'
         db.session.commit()
-        sse_manager.publish(sub.user.id, 'plan_changed', {'plan': 'free'})
+        sse_manager.publish(user.id, 'plan_changed', {'plan': 'free'})
+
+        try:
+            from app.services.email_service import EmailService
+            EmailService.send_subscription_cancelled(user.email)
+        except Exception:
+            logger.exception('Failed to send cancellation email for sub=%s', sub_code)
 
     @staticmethod
     def _on_invoice_payment_failed(data: dict) -> None:

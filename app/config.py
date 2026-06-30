@@ -10,6 +10,7 @@ class BaseConfig:
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(minutes=15)
     JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=30)
     APP_VERSION = os.environ.get('APP_VERSION', '0.1.0')
+    FRONTEND_URL = os.environ.get('FRONTEND_URL', 'https://snapit.ink')
     RATELIMIT_HEADERS_ENABLED = True
     SENTRY_DSN = os.environ.get('SENTRY_DSN', '')
     PAYSTACK_SECRET_KEY = os.environ.get('PAYSTACK_SECRET_KEY', '')
@@ -19,6 +20,13 @@ class BaseConfig:
         'pro_ai': os.environ.get('PAYSTACK_PLAN_PRO_AI', ''),
         'team': os.environ.get('PAYSTACK_PLAN_TEAM', ''),
     }
+    # Celery — uses Redis as both broker and result backend
+    CELERY_BROKER_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
+    CELERY_RESULT_BACKEND = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
+    CELERY_TASK_SERIALIZER = 'json'
+    CELERY_RESULT_SERIALIZER = 'json'
+    CELERY_ACCEPT_CONTENT = ['json']
+
     # Email — Resend is primary; Google SMTP is the fallback.
     RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '')
     MAIL_FROM = os.environ.get('MAIL_FROM', 'Snapit <hello@snapit.ink>')

@@ -3,9 +3,17 @@ from marshmallow import ValidationError
 
 from app.extensions import limiter
 from app.middleware.auth_middleware import require_auth
-from app.schemas.auth_schemas import LoginSchema, LogoutSchema, RefreshSchema, RegisterSchema
+from app.schemas.auth_schemas import (
+    ForgotPasswordSchema,
+    LoginSchema,
+    LogoutSchema,
+    RefreshSchema,
+    RegisterSchema,
+    ResetPasswordSchema,
+    VerifyEmailSchema,
+)
 from app.services.auth_service import AuthService
-from app.utils.errors import conflict, unauthorized, validation_failed
+from app.utils.errors import bad_request, conflict, unauthorized, validation_failed
 
 auth_bp = Blueprint('auth', __name__, url_prefix='/auth')
 
@@ -13,6 +21,9 @@ _register_schema = RegisterSchema()
 _login_schema = LoginSchema()
 _refresh_schema = RefreshSchema()
 _logout_schema = LogoutSchema()
+_forgot_schema = ForgotPasswordSchema()
+_reset_schema = ResetPasswordSchema()
+_verify_schema = VerifyEmailSchema()
 
 
 @auth_bp.post('/register')
@@ -84,4 +95,66 @@ def me():
         'id': user.id,
         'email': user.email,
         'plan': user.plan_tier,
+        'verified': user.verified_at is not None,
     }
+
+
+# ── Password reset ────────────────────────────────────────────────────────────
+
+@auth_bp.post('/forgot-password')
+@limiter.limit('5 per hour')
+def forgot_password():
+    try:
+        data = _forgot_schema.load(request.get_json(silent=True) or {})
+    except ValidationError as e:
+        return validation_failed(e.messages)
+
+    # Always succeeds — never reveals whether the email exists.
+    AuthService.forgot_password(data['email'])
+    return {'message': 'If that email is registered you will receive a reset link shortly.'}
+
+
+@auth_bp.post('/reset-password')
+@limiter.limit('10 per hour')
+def reset_password():
+    try:
+        data = _reset_schema.load(request.get_json(silent=True) or {})
+    except ValidationError as e:
+        return validation_failed(e.messages)
+
+    try:
+        AuthService.reset_password(data['token'], data['password'])
+    except ValueError:
+        return bad_request('This reset link is invalid or has expired. Please request a new one.')
+
+    return {'message': 'Password updated successfully. You can now sign in.'}
+
+
+# ── Email verification ────────────────────────────────────────────────────────
+
+@auth_bp.post('/send-verification')
+@require_auth
+@limiter.limit('5 per hour')
+def send_verification():
+    user = g.current_user
+    if user.verified_at is not None:
+        return {'message': 'Email already verified.'}
+
+    AuthService.send_verification(user)
+    return {'message': 'Verification email sent.'}
+
+
+@auth_bp.post('/verify-email')
+@limiter.limit('20 per hour')
+def verify_email():
+    try:
+        data = _verify_schema.load(request.get_json(silent=True) or {})
+    except ValidationError as e:
+        return validation_failed(e.messages)
+
+    try:
+        AuthService.verify_email(data['token'])
+    except ValueError:
+        return bad_request('This verification link is invalid or has expired.')
+
+    return {'message': 'Email verified successfully.'}

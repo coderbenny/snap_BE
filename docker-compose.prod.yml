@@ -1,19 +1,29 @@
+x-common-env: &common-env
+  FLASK_ENV: production
+  DATABASE_URL: ${DATABASE_URL}
+  SECRET_KEY: ${SECRET_KEY}
+  REDIS_URL: redis://localhost:6379/0
+  PAYSTACK_SECRET_KEY: ${PAYSTACK_SECRET_KEY}
+  PAYSTACK_WEBHOOK_SECRET: ${PAYSTACK_WEBHOOK_SECRET}
+  PAYSTACK_PLAN_PRO: ${PAYSTACK_PLAN_PRO}
+  PAYSTACK_PLAN_PRO_AI: ${PAYSTACK_PLAN_PRO_AI}
+  PAYSTACK_PLAN_TEAM: ${PAYSTACK_PLAN_TEAM}
+  SENTRY_DSN: ${SENTRY_DSN:-}
+  APP_VERSION: ${APP_VERSION:-1.0.0}
+  RESEND_API_KEY: ${RESEND_API_KEY:-}
+  SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+  SMTP_PORT: ${SMTP_PORT:-587}
+  SMTP_USERNAME: ${SMTP_USERNAME:-}
+  SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+  MAIL_FROM: ${MAIL_FROM:-Snapit <hello@snapit.ink>}
+  FRONTEND_URL: ${FRONTEND_URL:-https://snapit.ink}
+
 services:
   api:
     image: ${REGISTRY_IMAGE}:${IMAGE_TAG:-latest}
     network_mode: host
     environment:
-      FLASK_ENV: production
-      DATABASE_URL: ${DATABASE_URL}
-      SECRET_KEY: ${SECRET_KEY}
-      REDIS_URL: redis://localhost:6379/0
-      PAYSTACK_SECRET_KEY: ${PAYSTACK_SECRET_KEY}
-      PAYSTACK_WEBHOOK_SECRET: ${PAYSTACK_WEBHOOK_SECRET}
-      PAYSTACK_PLAN_PRO: ${PAYSTACK_PLAN_PRO}
-      PAYSTACK_PLAN_PRO_AI: ${PAYSTACK_PLAN_PRO_AI}
-      PAYSTACK_PLAN_TEAM: ${PAYSTACK_PLAN_TEAM}
-      SENTRY_DSN: ${SENTRY_DSN:-}
-      APP_VERSION: ${APP_VERSION:-1.0.0}
+      <<: *common-env
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c",
@@ -22,3 +32,25 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+
+  celery_worker:
+    image: ${REGISTRY_IMAGE}:${IMAGE_TAG:-latest}
+    network_mode: host
+    command: celery -A wsgi.celery worker --loglevel=info --concurrency=2
+    environment:
+      <<: *common-env
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+
+  celery_beat:
+    image: ${REGISTRY_IMAGE}:${IMAGE_TAG:-latest}
+    network_mode: host
+    command: celery -A wsgi.celery beat --loglevel=info --scheduler celery.beat.PersistentScheduler
+    environment:
+      <<: *common-env
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy

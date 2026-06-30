@@ -2,9 +2,11 @@ import logging
 
 import jwt
 from flask import current_app
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from app.extensions import db
+from app.models.email_verification_token import EmailVerificationToken
+from app.models.password_reset_token import PasswordResetToken
 from app.models.refresh_token import RefreshToken
 from app.models.user import User
 from app.utils.time import utcnow
@@ -32,6 +34,11 @@ class AuthService:
             EmailService.send_welcome(user.email)
         except Exception:
             logger.exception('Failed to send welcome email to %s', user.email)
+
+        try:
+            AuthService.send_verification(user)
+        except Exception:
+            logger.exception('Failed to send verification email to %s', user.email)
 
         return user
 
@@ -70,6 +77,107 @@ class AuthService:
         if record and record.revoked_at is None:
             record.revoked_at = utcnow()
             db.session.commit()
+
+    # ── Password reset ────────────────────────────────────────────────────────
+
+    @staticmethod
+    def forgot_password(email: str) -> None:
+        """Generate a reset token and send the email.
+
+        Always returns silently — never reveals whether the email exists.
+        """
+        from datetime import timedelta
+
+        from app.services.email_service import EmailService
+
+        user = db.session.execute(
+            select(User).where(User.email == email.lower())
+        ).scalar_one_or_none()
+
+        if not user:
+            return  # silent — no enumeration
+
+        raw = PasswordResetToken.generate()
+        record = PasswordResetToken(
+            user_id=user.id,
+            token_hash=PasswordResetToken.hash(raw),
+            expires_at=utcnow() + timedelta(hours=1),
+        )
+        db.session.add(record)
+        db.session.commit()
+
+        reset_url = (
+            f"{current_app.config.get('FRONTEND_URL', 'https://snapit.ink')}"
+            f"/reset-password?token={raw}"
+        )
+        EmailService.send_password_reset(user.email, reset_url)
+
+    @staticmethod
+    def reset_password(raw_token: str, new_password: str) -> None:
+        token_hash = PasswordResetToken.hash(raw_token)
+        record = db.session.execute(
+            select(PasswordResetToken).where(PasswordResetToken.token_hash == token_hash)
+        ).scalar_one_or_none()
+
+        if not record or not record.is_valid:
+            raise ValueError('INVALID_OR_EXPIRED_TOKEN')
+
+        record.user.set_password(new_password)
+        record.used_at = utcnow()
+
+        # Revoke all existing refresh tokens — forces re-login on all devices.
+        db.session.execute(
+            delete(RefreshToken).where(RefreshToken.user_id == record.user_id)
+        )
+        db.session.commit()
+
+    # ── Email verification ────────────────────────────────────────────────────
+
+    @staticmethod
+    def send_verification(user: User) -> None:
+        from datetime import timedelta
+
+        from app.services.email_service import EmailService
+
+        # Replace any existing unused token for this user.
+        db.session.execute(
+            delete(EmailVerificationToken).where(
+                EmailVerificationToken.user_id == user.id
+            )
+        )
+
+        raw = EmailVerificationToken.generate()
+        record = EmailVerificationToken(
+            user_id=user.id,
+            token_hash=EmailVerificationToken.hash(raw),
+            expires_at=utcnow() + timedelta(hours=24),
+        )
+        db.session.add(record)
+        db.session.commit()
+
+        verify_url = (
+            f"{current_app.config.get('FRONTEND_URL', 'https://snapit.ink')}"
+            f"/verify-email?token={raw}"
+        )
+        EmailService.send_verification(user.email, verify_url)
+
+    @staticmethod
+    def verify_email(raw_token: str) -> None:
+        token_hash = EmailVerificationToken.hash(raw_token)
+        record = db.session.execute(
+            select(EmailVerificationToken).where(
+                EmailVerificationToken.token_hash == token_hash
+            )
+        ).scalar_one_or_none()
+
+        if not record or not record.is_valid:
+            raise ValueError('INVALID_OR_EXPIRED_TOKEN')
+
+        record.user.verified_at = utcnow()
+        record.used_at = utcnow()
+        db.session.commit()
+
+    # ── Private helpers ───────────────────────────────────────────────────────
 
     @staticmethod
     def _build_access_token(user: User) -> str:
