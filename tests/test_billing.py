@@ -12,8 +12,17 @@ WEBHOOK_SECRET = 'test-webhook-secret'
 
 
 def register_and_login(client, email=VALID_EMAIL, password=VALID_PASSWORD):
-    client.post('/auth/register', json={'email': email, 'password': password})
-    res = client.post('/auth/login', json={'email': email, 'password': password})
+    from sqlalchemy import select
+
+    from app.extensions import db
+    from app.models.user import User
+    from app.utils.time import utcnow
+
+    client.post('/snap/auth/register', json={'email': email, 'password': password})
+    user = db.session.execute(select(User).where(User.email == email)).scalar_one()
+    user.verified_at = utcnow()
+    db.session.commit()
+    res = client.post('/snap/auth/login', json={'email': email, 'password': password})
     return {'Authorization': f"Bearer {res.get_json()['access_token']}"}
 
 
@@ -67,7 +76,7 @@ def send_webhook(client, payload: dict):
         digestmod=hashlib.sha512,
     ).hexdigest()
     return client.post(
-        '/webhooks/paystack',
+        '/snap/webhooks/paystack',
         data=body,
         content_type='application/json',
         headers={'x-paystack-signature': sig},
@@ -121,7 +130,7 @@ def invoice_failed_payload(sub_code='SUB_test123'):
 
 class TestGetPlans:
     def test_returns_three_plans(self, client):
-        res = client.get('/billing/plans')
+        res = client.get('/snap/billing/plans')
         assert res.status_code == 200
         plans = res.get_json()['plans']
         assert len(plans) == 3
@@ -131,11 +140,11 @@ class TestGetPlans:
         assert 'team' in tiers
 
     def test_no_auth_required(self, client):
-        res = client.get('/billing/plans')
+        res = client.get('/snap/billing/plans')
         assert res.status_code == 200
 
     def test_each_plan_has_required_fields(self, client):
-        plans = client.get('/billing/plans').get_json()['plans']
+        plans = client.get('/snap/billing/plans').get_json()['plans']
         for plan in plans:
             assert 'tier' in plan
             assert 'name' in plan
@@ -152,10 +161,14 @@ class TestSubscribe:
         mock_resp.raise_for_status = MagicMock()
         mock_resp.json.return_value = {
             'status': True,
-            'data': {'authorization_url': 'https://paystack.com/pay/testref'},
+            'data': {
+                'authorization_url': 'https://paystack.com/pay/testref',
+                'access_code': 'access_test',
+                'reference': 'ref_test',
+            },
         }
         with patch('app.services.billing_service.requests.post', return_value=mock_resp):
-            res = client.post('/billing/subscribe', json={'tier': 'pro'}, headers=headers)
+            res = client.post('/snap/billing/subscribe', json={'tier': 'pro'}, headers=headers)
 
         assert res.status_code == 200
         assert res.get_json()['authorization_url'] == 'https://paystack.com/pay/testref'
@@ -166,12 +179,16 @@ class TestSubscribe:
         mock_resp.raise_for_status = MagicMock()
         mock_resp.json.return_value = {
             'status': True,
-            'data': {'authorization_url': 'https://paystack.com/pay/testref'},
+            'data': {
+                'authorization_url': 'https://paystack.com/pay/testref',
+                'access_code': 'access_test',
+                'reference': 'ref_test',
+            },
         }
         target = 'app.services.billing_service.requests.post'
         with patch(target, return_value=mock_resp) as mock_post:
             client.post(
-                '/billing/subscribe',
+                '/snap/billing/subscribe',
                 json={'tier': 'pro', 'callback_url': 'https://snapit.ink/billing/success'},
                 headers=headers,
             )
@@ -181,16 +198,16 @@ class TestSubscribe:
 
     def test_invalid_tier(self, client):
         headers = register_and_login(client)
-        res = client.post('/billing/subscribe', json={'tier': 'enterprise'}, headers=headers)
+        res = client.post('/snap/billing/subscribe', json={'tier': 'enterprise'}, headers=headers)
         assert res.status_code == 422
 
     def test_missing_tier(self, client):
         headers = register_and_login(client)
-        res = client.post('/billing/subscribe', json={}, headers=headers)
+        res = client.post('/snap/billing/subscribe', json={}, headers=headers)
         assert res.status_code == 422
 
     def test_unauthenticated(self, client):
-        res = client.post('/billing/subscribe', json={'tier': 'pro'})
+        res = client.post('/snap/billing/subscribe', json={'tier': 'pro'})
         assert res.status_code == 401
 
     def test_paystack_api_failure_returns_500(self, client):
@@ -198,7 +215,7 @@ class TestSubscribe:
         mock_resp = MagicMock()
         mock_resp.raise_for_status.side_effect = Exception('Network error')
         with patch('app.services.billing_service.requests.post', return_value=mock_resp):
-            res = client.post('/billing/subscribe', json={'tier': 'pro'}, headers=headers)
+            res = client.post('/snap/billing/subscribe', json={'tier': 'pro'}, headers=headers)
         assert res.status_code == 500
 
 
@@ -234,21 +251,23 @@ class TestPortal:
         mock_resp.raise_for_status = MagicMock()
         mock_resp.json.return_value = {
             'status': True,
-            'data': {'link': 'https://paystack.com/manage/subscriptions/test'},
+            'data': {
+                'link': 'https://paystack.com/manage/subscriptions/test',
+            },
         }
         with patch('app.services.billing_service.requests.get', return_value=mock_resp):
-            res = client.post('/billing/portal', headers=headers)
+            res = client.post('/snap/billing/portal', headers=headers)
 
         assert res.status_code == 200
         assert 'portal_url' in res.get_json()
 
     def test_no_subscription_returns_404(self, client):
         headers = register_and_login(client)
-        res = client.post('/billing/portal', headers=headers)
+        res = client.post('/snap/billing/portal', headers=headers)
         assert res.status_code == 404
 
     def test_unauthenticated(self, client):
-        res = client.post('/billing/portal')
+        res = client.post('/snap/billing/portal')
         assert res.status_code == 401
 
 
@@ -259,7 +278,7 @@ class TestWebhook:
         payload = charge_success_payload()
         body = json.dumps(payload).encode()
         res = client.post(
-            '/webhooks/paystack',
+            '/snap/webhooks/paystack',
             data=body,
             content_type='application/json',
             headers={'x-paystack-signature': 'badsignature'},
@@ -269,7 +288,7 @@ class TestWebhook:
     def test_missing_signature_rejected(self, client):
         payload = charge_success_payload()
         body = json.dumps(payload).encode()
-        res = client.post('/webhooks/paystack', data=body, content_type='application/json')
+        res = client.post('/snap/webhooks/paystack', data=body, content_type='application/json')
         assert res.status_code == 400
 
     def test_unknown_event_returns_200(self, client):

@@ -1,7 +1,10 @@
 import pytest
+from sqlalchemy import select
 
 from app import create_app
 from app.extensions import db as _db
+from app.models.user import User
+from app.utils.time import utcnow
 
 
 @pytest.fixture(scope='session')
@@ -35,13 +38,20 @@ VALID_PASSWORD = 'testpassword123'
 
 @pytest.fixture
 def registered_user(client):
-    client.post('/auth/register', json={'email': VALID_EMAIL, 'password': VALID_PASSWORD})
+    client.post('/snap/auth/register', json={'email': VALID_EMAIL, 'password': VALID_PASSWORD})
+    # Auto-verify so login works in tests (no real email delivery in CI).
+    # No extra app_context() needed — the session-scoped app fixture keeps one alive.
+    user = _db.session.execute(
+        select(User).where(User.email == VALID_EMAIL)
+    ).scalar_one()
+    user.verified_at = utcnow()
+    _db.session.commit()
     return {'email': VALID_EMAIL, 'password': VALID_PASSWORD}
 
 
 @pytest.fixture
 def auth_tokens(client, registered_user):
-    res = client.post('/auth/login', json=registered_user)
+    res = client.post('/snap/auth/login', json=registered_user)
     return res.get_json()
 
 

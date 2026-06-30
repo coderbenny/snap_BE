@@ -140,7 +140,8 @@ def _base(title: str, preview: str, header_color: str, body: str) -> str:
 </head>
 <body style="margin:0;padding:0;background-color:#ECEEF2;-webkit-font-smoothing:antialiased;">
 
-  <div style="display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;color:#ECEEF2;line-height:1px;">
+  <div style="display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;
+              color:#ECEEF2;line-height:1px;">
     {preview}&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;
   </div>
 
@@ -460,7 +461,7 @@ def _render_subscription_cancelled(email: str) -> str:
         + _btn('https://snapit.ink/billing', 'Resubscribe')
         + _divider()
         + _p(
-            'Cancelled by mistake or changed your mind? Reply to this email and we\'ll sort it out.',
+            "Cancelled by mistake or changed your mind? Reply to this email and we'll sort it out.",
             small=True,
             color='#9AA5B8',
         )

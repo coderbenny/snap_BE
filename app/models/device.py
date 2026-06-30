@@ -1,4 +1,3 @@
-import uuid
 
 from app.extensions import db
 from app.utils.time import utcnow
