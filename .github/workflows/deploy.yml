@@ -18,7 +18,6 @@ jobs:
 
     outputs:
       registry_image: ${{ steps.image.outputs.name }}
-      image_tag: ${{ steps.meta.outputs.version }}
 
     steps:
       - uses: actions/checkout@v4
@@ -76,7 +75,7 @@ jobs:
 
             DEPLOY_PATH="${{ env.DEPLOY_PATH }}"
             REGISTRY_IMAGE="${{ needs.build-and-push.outputs.registry_image }}"
-            IMAGE_TAG="sha-${{ github.sha }}"
+            IMAGE_TAG="latest"
             COMPOSE_PROJECT="${{ env.COMPOSE_PROJECT_NAME }}"
 
             cd "$DEPLOY_PATH"
