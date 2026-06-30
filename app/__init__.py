@@ -50,6 +50,8 @@ def _init_sentry(app: Flask) -> None:
 
 
 def _register_blueprints(app: Flask) -> None:
+    from flask import Blueprint
+
     from app.routes.auth import auth_bp
     from app.routes.billing import billing_bp
     from app.routes.devices import devices_bp
@@ -59,14 +61,19 @@ def _register_blueprints(app: Flask) -> None:
     from app.routes.teams import teams_bp
     from app.routes.webhooks import webhooks_bp
 
+    # /health lives at root so the infra health check always works
     app.register_blueprint(health_bp)
-    app.register_blueprint(auth_bp)
-    app.register_blueprint(devices_bp)
-    app.register_blueprint(events_bp)
-    app.register_blueprint(sync_bp)
-    app.register_blueprint(billing_bp)
-    app.register_blueprint(webhooks_bp)
-    app.register_blueprint(teams_bp)
+
+    # All API routes live under /snap
+    api = Blueprint('api', __name__, url_prefix='/snap')
+    api.register_blueprint(auth_bp)
+    api.register_blueprint(devices_bp)
+    api.register_blueprint(events_bp)
+    api.register_blueprint(sync_bp)
+    api.register_blueprint(billing_bp)
+    api.register_blueprint(webhooks_bp)
+    api.register_blueprint(teams_bp)
+    app.register_blueprint(api)
 
 
 def _register_hooks(app: Flask) -> None:
