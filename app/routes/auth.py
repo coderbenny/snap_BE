@@ -54,7 +54,12 @@ def login():
 
     try:
         access_token, refresh_token = AuthService.login(data['email'], data['password'])
-    except ValueError:
+    except ValueError as e:
+        if str(e) == 'EMAIL_NOT_VERIFIED':
+            return bad_request(
+                'Please verify your email before signing in. '
+                'Check your inbox for the verification link.'
+            )
         return unauthorized('Invalid email or password')
 
     return {'access_token': access_token, 'refresh_token': refresh_token}
@@ -100,6 +105,18 @@ def me():
 
 
 # ── Password reset ────────────────────────────────────────────────────────────
+
+@auth_bp.post('/resend-verification')
+@limiter.limit('5 per hour')
+def resend_verification():
+    try:
+        data = _forgot_schema.load(request.get_json(silent=True) or {})
+    except ValidationError as e:
+        return validation_failed(e.messages)
+
+    AuthService.resend_verification(data['email'])
+    return {'message': 'If that address is unverified you will receive a new link shortly.'}
+
 
 @auth_bp.post('/forgot-password')
 @limiter.limit('5 per hour')

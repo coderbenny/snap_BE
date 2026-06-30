@@ -30,12 +30,6 @@ class AuthService:
         db.session.commit()
 
         try:
-            from app.services.email_service import EmailService
-            EmailService.send_welcome(user.email)
-        except Exception:
-            logger.exception('Failed to send welcome email to %s', user.email)
-
-        try:
             AuthService.send_verification(user)
         except Exception:
             logger.exception('Failed to send verification email to %s', user.email)
@@ -50,6 +44,9 @@ class AuthService:
 
         if not user or not user.check_password(password):
             raise ValueError('INVALID_CREDENTIALS')
+
+        if user.verified_at is None:
+            raise ValueError('EMAIL_NOT_VERIFIED')
 
         access_token = AuthService._build_access_token(user)
         refresh_token = AuthService._create_refresh_token(user)
@@ -77,6 +74,23 @@ class AuthService:
         if record and record.revoked_at is None:
             record.revoked_at = utcnow()
             db.session.commit()
+
+    # ── Email verification (public resend) ───────────────────────────────────
+
+    @staticmethod
+    def resend_verification(email: str) -> None:
+        """Re-send a verification email by email address. Always silent."""
+        user = db.session.execute(
+            select(User).where(User.email == email.lower())
+        ).scalar_one_or_none()
+
+        if not user or user.verified_at is not None:
+            return  # silent — no enumeration, no resend if already verified
+
+        try:
+            AuthService.send_verification(user)
+        except Exception:
+            logger.exception('Failed to resend verification to %s', user.email)
 
     # ── Password reset ────────────────────────────────────────────────────────
 
@@ -176,6 +190,12 @@ class AuthService:
         record.user.verified_at = utcnow()
         record.used_at = utcnow()
         db.session.commit()
+
+        try:
+            from app.services.email_service import EmailService
+            EmailService.send_welcome(record.user.email)
+        except Exception:
+            logger.exception('Failed to send welcome email to %s', record.user.email)
 
     # ── Private helpers ───────────────────────────────────────────────────────
 
