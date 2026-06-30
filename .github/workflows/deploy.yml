@@ -73,6 +73,7 @@ jobs:
           password: ${{ secrets.SERVER_PASSWORD }}
           source: docker-compose.prod.yml
           target: ${{ env.DEPLOY_PATH }}
+          overwrite: true
 
       - name: Deploy to server
         uses: appleboy/ssh-action@v1.0.3
