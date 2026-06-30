@@ -1,4 +1,5 @@
 import json
+import logging
 import secrets
 
 from flask import Blueprint, current_app, g, request
@@ -9,8 +10,16 @@ from app.middleware.auth_middleware import require_auth
 from app.models.user import User
 from app.schemas.billing_schemas import SubscribeSchema
 from app.services.billing_service import BillingService
-from app.utils.errors import bad_request, not_found, server_error, validation_failed
+from app.utils.errors import (
+    bad_request,
+    not_found,
+    server_error,
+    service_unavailable,
+    validation_failed,
+)
 from app.utils.redis_client import get_redis
+
+logger = logging.getLogger(__name__)
 
 billing_bp = Blueprint('billing', __name__, url_prefix='/billing')
 
@@ -75,7 +84,13 @@ def upgrade_link():
 
     token = secrets.token_urlsafe(16)
     payload = json.dumps({'user_id': g.current_user.id, 'tier': tier})
-    get_redis().set(f'upgrade_token:{token}', payload, ex=900)  # 15-minute TTL
+    try:
+        get_redis().set(f'upgrade_token:{token}', payload, ex=900)  # 15-minute TTL
+    except Exception:
+        logger.error('upgrade_link: Redis unavailable — cannot store upgrade token')
+        return service_unavailable(
+            'Upgrade service is temporarily unavailable. Please try again in a moment.'
+        )
 
     base = current_app.config.get('FRONTEND_URL', 'https://snapit.ink')
     return {'url': f'{base}/upgrade?token={token}&tier={tier}'}, 200

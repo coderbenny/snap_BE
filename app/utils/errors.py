@@ -33,6 +33,10 @@ def server_error(message: str = 'An unexpected error occurred'):
     return error_response('INTERNAL_ERROR', message, 500)
 
 
+def service_unavailable(message: str = 'Service temporarily unavailable'):
+    return error_response('SERVICE_UNAVAILABLE', message, 503)
+
+
 def validation_failed(messages: dict):
     flat = '; '.join(
         f"{field}: {', '.join(errs) if isinstance(errs, list) else errs}"
