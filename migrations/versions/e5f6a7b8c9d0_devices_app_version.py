@@ -20,10 +20,14 @@ def upgrade():
 
     with op.batch_alter_table('devices') as batch_op:
         batch_op.add_column(sa.Column('app_version', sa.String(20), nullable=True))
-        batch_op.alter_column('last_seen_at', nullable=False)
+        batch_op.alter_column('last_seen_at',
+                              existing_type=sa.DateTime(),
+                              nullable=False)
 
 
 def downgrade():
     with op.batch_alter_table('devices') as batch_op:
-        batch_op.alter_column('last_seen_at', nullable=True)
+        batch_op.alter_column('last_seen_at',
+                              existing_type=sa.DateTime(),
+                              nullable=True)
         batch_op.drop_column('app_version')
