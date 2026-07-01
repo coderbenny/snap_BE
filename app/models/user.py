@@ -17,6 +17,8 @@ class User(db.Model):
         nullable=False,
         default='free',
     )
+    is_admin = db.Column(db.Boolean, nullable=False, default=False)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
     verified_at = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
 

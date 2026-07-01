@@ -54,3 +54,29 @@ def send_expiry_warnings(self):
 
     logger.info('send_expiry_warnings: sent=%d checked=%d', sent, len(subs))
     return {'sent': sent, 'checked': len(subs)}
+
+
+@celery.task(
+    bind=True,
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_backoff_max=600,
+    max_retries=3,
+    name='app.tasks.email_tasks.send_broadcast',
+)
+def send_broadcast(self, emails: list, subject: str, body_html: str):
+    """Send a broadcast email to the given list of addresses."""
+    from app.services.email_service import EmailService
+
+    sent = 0
+    failed = 0
+    for email in emails:
+        try:
+            EmailService._send(email, subject, body_html)
+            sent += 1
+        except Exception:
+            logger.exception('broadcast: failed to send to %s', email)
+            failed += 1
+
+    logger.info('send_broadcast: sent=%d failed=%d subject=%r', sent, failed, subject)
+    return {'sent': sent, 'failed': failed}

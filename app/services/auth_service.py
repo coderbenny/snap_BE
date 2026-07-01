@@ -48,6 +48,9 @@ class AuthService:
         if user.verified_at is None:
             raise ValueError('EMAIL_NOT_VERIFIED')
 
+        if not user.is_active:
+            raise ValueError('ACCOUNT_DISABLED')
+
         access_token = AuthService._build_access_token(user)
         refresh_token = AuthService._create_refresh_token(user)
         return access_token, refresh_token
@@ -205,6 +208,7 @@ class AuthService:
         payload = {
             'sub': user.id,
             'plan_tier': user.plan_tier,
+            'is_admin': user.is_admin,
             'iat': now,
             'exp': now + current_app.config['JWT_ACCESS_TOKEN_EXPIRES'],
         }

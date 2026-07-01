@@ -8,7 +8,7 @@ from sqlalchemy import select
 from app.extensions import db
 from app.models.device import Device
 from app.models.user import User
-from app.utils.errors import unauthorized
+from app.utils.errors import forbidden, unauthorized
 from app.utils.time import utcnow
 
 logger = logging.getLogger(__name__)
@@ -36,6 +36,9 @@ def require_auth(f):
         user = db.session.get(User, payload['sub'])
         if not user:
             return unauthorized()
+
+        if not user.is_active:
+            return forbidden('Your account has been disabled. Contact support@snapit.ink.')
 
         g.current_user = user
 

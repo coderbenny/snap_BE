@@ -1,4 +1,5 @@
 from app.models.clipboard_item import ClipboardItem
+from app.models.coupon import Coupon, CouponUse
 from app.models.device import Device
 from app.models.email_verification_token import EmailVerificationToken
 from app.models.password_reset_token import PasswordResetToken
@@ -12,4 +13,5 @@ __all__ = [
     'Subscription',
     'Team', 'TeamMember', 'SharedSnippet', 'TeamInvite',
     'PasswordResetToken', 'EmailVerificationToken',
+    'Coupon', 'CouponUse',
 ]

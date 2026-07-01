@@ -55,6 +55,7 @@ def _init_sentry(app: Flask) -> None:
 def _register_blueprints(app: Flask) -> None:
     from flask import Blueprint
 
+    from app.routes.admin import admin_bp
     from app.routes.auth import auth_bp
     from app.routes.billing import billing_bp
     from app.routes.devices import devices_bp
@@ -70,6 +71,7 @@ def _register_blueprints(app: Flask) -> None:
     # All API routes live under /snap
     api = Blueprint('api', __name__, url_prefix='/snap')
     api.register_blueprint(auth_bp)
+    api.register_blueprint(admin_bp)
     api.register_blueprint(devices_bp)
     api.register_blueprint(events_bp)
     api.register_blueprint(sync_bp)

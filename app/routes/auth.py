@@ -60,6 +60,8 @@ def login():
                 'Please verify your email before signing in. '
                 'Check your inbox for the verification link.'
             )
+        if str(e) == 'ACCOUNT_DISABLED':
+            return bad_request('Your account has been disabled. Contact support@snapit.ink.')
         return unauthorized('Invalid email or password')
 
     return {'access_token': access_token, 'refresh_token': refresh_token}
@@ -101,6 +103,7 @@ def me():
         'email': user.email,
         'plan': user.plan_tier,
         'verified': user.verified_at is not None,
+        'is_admin': user.is_admin,
     }
 
 
