@@ -16,44 +16,43 @@ depends_on = None
 
 
 def upgrade():
-    op.create_table(
-        'password_reset_tokens',
-        sa.Column('id', sa.String(36), nullable=False),
-        sa.Column('user_id', sa.String(36), nullable=False),
-        sa.Column('token_hash', sa.String(64), nullable=False),
-        sa.Column('expires_at', sa.DateTime(), nullable=False),
-        sa.Column('used_at', sa.DateTime(), nullable=True),
-        sa.Column('created_at', sa.DateTime(), nullable=False),
-        sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
-        sa.PrimaryKeyConstraint('id'),
-        sa.UniqueConstraint('token_hash'),
-    )
-    op.create_index('ix_password_reset_tokens_user_id', 'password_reset_tokens', ['user_id'])
-    op.create_index('ix_password_reset_tokens_token_hash', 'password_reset_tokens', ['token_hash'])
-
-    op.create_table(
-        'email_verification_tokens',
-        sa.Column('id', sa.String(36), nullable=False),
-        sa.Column('user_id', sa.String(36), nullable=False),
-        sa.Column('token_hash', sa.String(64), nullable=False),
-        sa.Column('expires_at', sa.DateTime(), nullable=False),
-        sa.Column('used_at', sa.DateTime(), nullable=True),
-        sa.Column('created_at', sa.DateTime(), nullable=False),
-        sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
-        sa.PrimaryKeyConstraint('id'),
-        sa.UniqueConstraint('token_hash'),
-    )
-    op.create_index('ix_email_verification_tokens_user_id', 'email_verification_tokens', ['user_id'])
-    op.create_index('ix_email_verification_tokens_token_hash', 'email_verification_tokens', ['token_hash'])
-
-    # Guard against re-run (column may exist from partial migration)
     conn = op.get_bind()
-    col_exists = conn.execute(sa.text(
-        "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS "
-        "WHERE TABLE_SCHEMA = DATABASE() "
-        "AND TABLE_NAME = 'subscriptions' AND COLUMN_NAME = 'expiry_warning_sent_at'"
-    )).scalar()
-    if not col_exists:
+    existing_tables = sa.inspect(conn).get_table_names()
+
+    if 'password_reset_tokens' not in existing_tables:
+        op.create_table(
+            'password_reset_tokens',
+            sa.Column('id', sa.String(36), nullable=False),
+            sa.Column('user_id', sa.String(36), nullable=False),
+            sa.Column('token_hash', sa.String(64), nullable=False),
+            sa.Column('expires_at', sa.DateTime(), nullable=False),
+            sa.Column('used_at', sa.DateTime(), nullable=True),
+            sa.Column('created_at', sa.DateTime(), nullable=False),
+            sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
+            sa.PrimaryKeyConstraint('id'),
+            sa.UniqueConstraint('token_hash'),
+        )
+        op.create_index('ix_password_reset_tokens_user_id', 'password_reset_tokens', ['user_id'])
+        op.create_index('ix_password_reset_tokens_token_hash', 'password_reset_tokens', ['token_hash'])
+
+    if 'email_verification_tokens' not in existing_tables:
+        op.create_table(
+            'email_verification_tokens',
+            sa.Column('id', sa.String(36), nullable=False),
+            sa.Column('user_id', sa.String(36), nullable=False),
+            sa.Column('token_hash', sa.String(64), nullable=False),
+            sa.Column('expires_at', sa.DateTime(), nullable=False),
+            sa.Column('used_at', sa.DateTime(), nullable=True),
+            sa.Column('created_at', sa.DateTime(), nullable=False),
+            sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
+            sa.PrimaryKeyConstraint('id'),
+            sa.UniqueConstraint('token_hash'),
+        )
+        op.create_index('ix_email_verification_tokens_user_id', 'email_verification_tokens', ['user_id'])
+        op.create_index('ix_email_verification_tokens_token_hash', 'email_verification_tokens', ['token_hash'])
+
+    existing_sub_cols = [c['name'] for c in sa.inspect(conn).get_columns('subscriptions')]
+    if 'expiry_warning_sent_at' not in existing_sub_cols:
         op.add_column('subscriptions', sa.Column('expiry_warning_sent_at', sa.DateTime(), nullable=True))
 
 
