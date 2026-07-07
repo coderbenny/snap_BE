@@ -1,5 +1,3 @@
-import queue as queue_module
-
 from flask import Blueprint, Response, g
 
 from app.middleware.auth_middleware import require_auth
@@ -11,35 +9,38 @@ events_bp = Blueprint('events', __name__, url_prefix='/events')
 @events_bp.get('')
 @require_auth
 def stream():
-    """Long-lived Server-Sent Events stream for the authenticated user.
+    """Long-lived SSE stream for the authenticated user.
 
-    Sends a keepalive comment every 25 s to prevent proxies from closing
-    idle connections. The client reconnects automatically on drop.
+    Sends a keepalive comment every 25 s to prevent proxies from closing idle
+    connections. The client reconnects automatically on drop.
 
     Events emitted:
-      plan_changed  {"plan": "pro"}   — fired when billing updates plan_tier
+      plan_changed      {"plan": "pro"}
+      transfer_incoming {"session_id", "file_name", "file_size", "mime_type",
+                         "sender_device_name"}
+      transfer_cancelled {"session_id"}
     """
     user_id = g.current_user.id
-    q = sse_manager.subscribe(user_id)
+    ps = sse_manager.subscribe(user_id)
 
     def generate():
         yield ': connected\n\n'
         try:
             while True:
-                try:
-                    msg = q.get(timeout=25)
+                msg = sse_manager.get_message(ps, timeout=25.0)
+                if msg is not None:
                     yield f"event: {msg['event']}\ndata: {msg['data']}\n\n"
-                except queue_module.Empty:
+                else:
                     yield ': keepalive\n\n'
         finally:
-            sse_manager.unsubscribe(user_id, q)
+            sse_manager.unsubscribe(ps)
 
     return Response(
         generate(),
         mimetype='text/event-stream',
         headers={
             'Cache-Control': 'no-cache',
-            'X-Accel-Buffering': 'no',   # disable nginx response buffering
+            'X-Accel-Buffering': 'no',
             'Connection': 'keep-alive',
         },
     )

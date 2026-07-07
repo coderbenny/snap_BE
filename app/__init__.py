@@ -6,7 +6,7 @@ import structlog
 from flask import Flask, g, request
 
 from app.config import config_by_name
-from app.extensions import db, limiter, migrate
+from app.extensions import db, limiter, migrate, sock
 from app.logging_config import configure_logging
 
 _logger = structlog.get_logger('snap.requests')
@@ -26,6 +26,7 @@ def create_app(config_name=None):
 
     db.init_app(app)
     migrate.init_app(app, db)
+    sock.init_app(app)
     limiter.init_app(app)
 
     from app.celery_app import init_celery
@@ -63,6 +64,7 @@ def _register_blueprints(app: Flask) -> None:
     from app.routes.health import health_bp
     from app.routes.sync import sync_bp
     from app.routes.teams import teams_bp
+    from app.routes.transfer import transfer_bp  # noqa: F401 — also registers WS routes
     from app.routes.webhooks import webhooks_bp
 
     # /health lives at root so the infra health check always works
@@ -76,6 +78,7 @@ def _register_blueprints(app: Flask) -> None:
     api.register_blueprint(events_bp)
     api.register_blueprint(sync_bp)
     api.register_blueprint(billing_bp)
+    api.register_blueprint(transfer_bp)
     api.register_blueprint(webhooks_bp)
     api.register_blueprint(teams_bp)
     app.register_blueprint(api)

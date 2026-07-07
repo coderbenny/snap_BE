@@ -1,43 +1,54 @@
 import json
-import queue
-import threading
+import logging
+
+from app.utils.redis_client import get_redis
+
+logger = logging.getLogger(__name__)
 
 
 class _SSEManager:
-    """In-process pub/sub for Server-Sent Events.
+    """Redis pub/sub-backed SSE manager.
 
-    Works with a single gunicorn worker (--workers 1 --threads N) or the
-    Werkzeug dev server. For multi-worker deployments, replace the Queue
-    storage with Redis pub/sub channels.
+    Each SSE connection subscribes to a per-user Redis channel (sse:{user_id}).
+    publish() broadcasts to all of that user's connected devices across all
+    gunicorn workers.
+
+    publish() never raises — if Redis is unavailable the event is dropped and
+    a warning is logged, so callers (billing webhooks etc.) don't crash.
     """
 
-    def __init__(self):
-        self._lock = threading.Lock()
-        self._queues: dict[str, list[queue.Queue]] = {}
+    def subscribe(self, user_id: str):
+        """Return a Redis PubSub subscribed to this user's SSE channel."""
+        ps = get_redis().pubsub(ignore_subscribe_messages=True)
+        ps.subscribe(f'sse:{user_id}')
+        return ps
 
-    def subscribe(self, user_id: str) -> queue.Queue:
-        q: queue.Queue = queue.Queue(maxsize=20)
-        with self._lock:
-            self._queues.setdefault(user_id, []).append(q)
-        return q
-
-    def unsubscribe(self, user_id: str, q: queue.Queue) -> None:
-        with self._lock:
-            qs = self._queues.get(user_id, [])
-            try:
-                qs.remove(q)
-            except ValueError:
-                pass
+    def unsubscribe(self, ps) -> None:
+        try:
+            ps.unsubscribe()
+            ps.close()
+        except Exception:
+            pass
 
     def publish(self, user_id: str, event: str, data: dict) -> None:
-        payload = {'event': event, 'data': json.dumps(data)}
-        with self._lock:
-            qs = list(self._queues.get(user_id, []))
-        for q in qs:
-            try:
-                q.put_nowait(payload)
-            except queue.Full:
-                pass  # client fell behind — drop the message
+        payload = json.dumps({'event': event, 'data': json.dumps(data)})
+        try:
+            get_redis().publish(f'sse:{user_id}', payload)
+        except Exception:
+            logger.warning(
+                'sse_manager.publish: redis unavailable, event dropped',
+                extra={'user_id': user_id, 'event': event},
+            )
+
+    def get_message(self, ps, timeout: float = 25.0) -> dict | None:
+        """Return parsed {'event': str, 'data': str} or None on timeout."""
+        msg = ps.get_message(timeout=timeout)
+        if msg is None:
+            return None
+        try:
+            return json.loads(msg['data'])
+        except Exception:
+            return None
 
 
 sse_manager = _SSEManager()

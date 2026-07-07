@@ -28,7 +28,10 @@ _subscribe_schema = SubscribeSchema()
 
 @billing_bp.get('/plans')
 def get_plans():
-    return {'plans': BillingService.PLANS}
+    return {
+        'plans': BillingService.PLANS,
+        'addons': BillingService.get_addon_prices(),
+    }
 
 
 @billing_bp.post('/subscribe')
@@ -139,6 +142,39 @@ def init_upgrade():
         return bad_request(str(e))
     except Exception:
         return server_error('Failed to initialise payment. Please try again.')
+
+    return result, 200
+
+
+@billing_bp.post('/addon/file-transfer')
+@require_auth
+def purchase_file_transfer_addon():
+    """Initialize a one-time payment to activate the file-transfer addon."""
+    body = request.get_json(silent=True) or {}
+    try:
+        result = BillingService.initialize_addon_transaction(
+            g.current_user,
+            'file_transfer',
+            body.get('callback_url'),
+        )
+    except ValueError as e:
+        return bad_request(str(e))
+    except Exception:
+        return server_error('Failed to initialize payment. Please try again.')
+
+    return result, 200
+
+
+@billing_bp.get('/addon/verify/<reference>')
+@require_auth
+def verify_addon(reference: str):
+    """Verify an addon payment and activate the addon immediately."""
+    try:
+        result = BillingService.verify_addon_transaction(g.current_user, reference)
+    except ValueError as e:
+        return bad_request(str(e))
+    except Exception:
+        return server_error('Verification failed. Please try again.')
 
     return result, 200
 

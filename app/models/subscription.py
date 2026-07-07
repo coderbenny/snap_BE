@@ -28,6 +28,7 @@ class Subscription(db.Model):
     paystack_sub_code = db.Column(db.String(100), nullable=True, index=True)  # SUB_xxx
     expires_at = db.Column(db.DateTime, nullable=False)
     expiry_warning_sent_at = db.Column(db.DateTime, nullable=True)
+    file_transfer_addon = db.Column(db.Boolean, nullable=False, default=False)
     created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
 
     user = db.relationship('User', back_populates='subscription')

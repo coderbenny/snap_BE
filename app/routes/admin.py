@@ -229,6 +229,9 @@ def update_subscription(sub_id):
         sub.tier = body['tier']
         sub.user.plan_tier = body['tier']
 
+    if 'file_transfer_addon' in body:
+        sub.file_transfer_addon = bool(body['file_transfer_addon'])
+
     db.session.commit()
     logger.info('admin.update_subscription: admin=%s sub=%s', g.current_user.id, sub_id)
     return {'subscription': _serialize_sub(sub)}
@@ -540,6 +543,7 @@ def _serialize_sub(s: Subscription) -> dict:
         'status': s.status,
         'paystack_customer_code': s.paystack_customer_code,
         'paystack_sub_code': s.paystack_sub_code,
+        'file_transfer_addon': bool(s.file_transfer_addon),
         'expires_at': s.expires_at.isoformat(),
         'created_at': s.created_at.isoformat(),
     }

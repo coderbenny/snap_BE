@@ -20,6 +20,12 @@ class BaseConfig:
         'pro_ai': os.environ.get('PAYSTACK_PLAN_PRO_AI', ''),
         'team': os.environ.get('PAYSTACK_PLAN_TEAM', ''),
     }
+    # Amount passed directly to Paystack — must be in the SMALLEST currency unit
+    # (kobo for NGN, cents-equivalent for KES, etc.). Divide by 100 to display
+    # to the user. Example: 20000 = KES 200 / NGN 200.
+    ADDON_FILE_TRANSFER_PRICE_CENTS = int(
+        os.environ.get('ADDON_FILE_TRANSFER_PRICE_CENTS', 20000)
+    )
     # Celery — uses Redis as both broker and result backend
     CELERY_BROKER_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
     CELERY_RESULT_BACKEND = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')

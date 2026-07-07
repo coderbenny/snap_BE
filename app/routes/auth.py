@@ -98,12 +98,14 @@ def logout():
 @require_auth
 def me():
     user = g.current_user
+    sub = user.subscription
     return {
         'id': user.id,
         'email': user.email,
         'plan': user.plan_tier,
         'verified': user.verified_at is not None,
         'is_admin': user.is_admin,
+        'file_transfer_addon': bool(sub and sub.file_transfer_addon),
     }
 
 

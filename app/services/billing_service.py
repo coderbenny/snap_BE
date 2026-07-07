@@ -63,6 +63,101 @@ class BillingService:
         },
     ]
 
+    # Default price — override with ADDON_FILE_TRANSFER_PRICE_CENTS in Flask config / env.
+    ADDON_FILE_TRANSFER_PRICE_CENTS = 200
+
+    ADDONS = [
+        {
+            'id': 'file_transfer',
+            'name': 'File Transfer',
+            'description': (
+                'Drag & drop files between your devices instantly. '
+                'Server-relayed, nothing stored on disk.'
+            ),
+            'type': 'one_time',
+            # price_usd_cents is injected at request time from config — see get_addon_prices()
+        },
+    ]
+
+    @staticmethod
+    def get_addon_prices() -> list[dict]:
+        """Return ADDONS with live price_usd_cents resolved from config."""
+        price_map = {
+            'file_transfer': current_app.config.get(
+                'ADDON_FILE_TRANSFER_PRICE_CENTS',
+                BillingService.ADDON_FILE_TRANSFER_PRICE_CENTS,
+            ),
+        }
+        return [
+            {**addon, 'price_usd_cents': price_map.get(addon['id'], 0)}
+            for addon in BillingService.ADDONS
+        ]
+
+    @staticmethod
+    def initialize_addon_transaction(user: User, addon: str, callback_url: str | None) -> dict:
+        """Initialize a one-time Paystack charge for an addon.
+
+        Unlike plan subscriptions, addons are one-time payments (no `plan`
+        field).  The metadata `addon` key is used by the webhook and verify
+        handlers to route the activation.
+        """
+        if addon != 'file_transfer':
+            raise ValueError(f"Unknown addon '{addon}'")
+
+        sub = db.session.execute(
+            select(Subscription).where(Subscription.user_id == user.id)
+        ).scalar_one_or_none()
+        if not sub or sub.status != 'active':
+            raise ValueError('An active subscription is required to purchase addons')
+        if sub.tier == 'team':
+            raise ValueError('File transfer is already included in your Team plan')
+        if sub.file_transfer_addon:
+            raise ValueError('File transfer addon is already active')
+
+        prices = {a['id']: a['price_usd_cents'] for a in BillingService.get_addon_prices()}
+        amount = prices.get(addon, 0)
+        payload: dict = {
+            'email': user.email,
+            'amount': amount,
+            'metadata': {'user_id': user.id, 'addon': addon},
+        }
+        if callback_url:
+            payload['callback_url'] = callback_url
+
+        body = _paystack_post('/transaction/initialize', payload)
+        d = body['data']
+        return {
+            'authorization_url': d['authorization_url'],
+            'access_code': d['access_code'],
+            'reference': d['reference'],
+        }
+
+    @staticmethod
+    def verify_addon_transaction(user: User, reference: str) -> dict:
+        """Verify a one-time addon payment and activate the addon."""
+        body = _paystack_get(f'/transaction/verify/{reference}')
+        d = body['data']
+
+        if d.get('status') != 'success':
+            raise ValueError(f"Transaction not successful: {d.get('status')}")
+
+        addon = (d.get('metadata') or {}).get('addon')
+        if addon != 'file_transfer':
+            raise ValueError('Reference is not for a file-transfer addon purchase')
+
+        sub = db.session.execute(
+            select(Subscription).where(Subscription.user_id == user.id)
+        ).scalar_one_or_none()
+        if not sub:
+            raise ValueError('No subscription found')
+
+        if not sub.file_transfer_addon:
+            sub.file_transfer_addon = True
+            db.session.commit()
+            logger.info('File transfer addon activated via verify: user=%s', user.id)
+
+        return {'status': 'success', 'addon': 'file_transfer', 'reference': reference}
+
     @staticmethod
     def initialize_transaction(user: User, tier: str, callback_url: str | None) -> dict:
         """Initialize a Paystack transaction.
@@ -197,9 +292,15 @@ class BillingService:
 
     @staticmethod
     def _on_charge_success(data: dict) -> None:
+        metadata = data.get('metadata') or {}
+        addon = metadata.get('addon')
+        if addon == 'file_transfer':
+            BillingService._on_addon_charge_success(data, addon)
+            return
+
         plan_code = (data.get('plan') or {}).get('plan_code')
         if not plan_code:
-            return  # one-time charge, not a subscription
+            return  # one-time charge with no recognised addon — ignore
 
         customer = data.get('customer') or {}
         email = (customer.get('email') or '').lower()
@@ -326,6 +427,29 @@ class BillingService:
                 EmailService.send_payment_failed(sub.user.email)
             except Exception:
                 logger.exception('Failed to send payment-failed email for sub=%s', sub_code)
+
+    @staticmethod
+    def _on_addon_charge_success(data: dict, addon: str) -> None:
+        metadata = data.get('metadata') or {}
+        user_id = metadata.get('user_id')
+        if not user_id:
+            return
+
+        user = db.session.get(User, user_id)
+        if not user:
+            return
+
+        sub = db.session.execute(
+            select(Subscription).where(Subscription.user_id == user_id)
+        ).scalar_one_or_none()
+        if not sub:
+            return
+
+        if addon == 'file_transfer' and not sub.file_transfer_addon:
+            sub.file_transfer_addon = True
+            db.session.commit()
+            logger.info('File transfer addon activated via webhook: user=%s', user_id)
+            sse_manager.publish(user_id, 'addon_activated', {'addon': addon})
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 
