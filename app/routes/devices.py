@@ -36,6 +36,20 @@ def list_devices():
     return {'devices': [_serialize(d) for d in devices]}
 
 
+@devices_bp.patch('/fcm-token')
+@require_auth
+def update_fcm_token():
+    data = request.get_json(silent=True) or {}
+    device_id = (data.get('device_id') or '').strip()
+    token = (data.get('fcm_token') or '').strip()
+    if not device_id or not token:
+        from app.utils.errors import bad_request
+        return bad_request('device_id and fcm_token are required')
+    if not DeviceService.update_fcm_token(g.current_user, device_id, token):
+        return not_found('Device not found')
+    return '', 204
+
+
 @devices_bp.delete('/<device_id>')
 @require_auth
 def delete_device(device_id):

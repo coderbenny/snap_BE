@@ -16,3 +16,4 @@ sentry-sdk[flask]==2.14.0
 redis==5.0.8
 resend==2.3.0
 celery[redis]==5.4.0
+firebase-admin==6.5.0

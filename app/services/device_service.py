@@ -47,6 +47,17 @@ class DeviceService:
         ).scalars().all()
 
     @staticmethod
+    def update_fcm_token(user: User, device_id: str, token: str) -> bool:
+        device = db.session.execute(
+            select(Device).where(Device.id == device_id, Device.user_id == user.id)
+        ).scalar_one_or_none()
+        if not device:
+            return False
+        device.fcm_token = token
+        db.session.commit()
+        return True
+
+    @staticmethod
     def delete(user: User, device_id: str) -> bool:
         device = db.session.execute(
             select(Device).where(Device.id == device_id, Device.user_id == user.id)

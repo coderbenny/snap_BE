@@ -167,6 +167,17 @@ def start_transfer():
         'target_device_id': target_device_id,
     })
 
+    # FCM fallback: wakes the app when backgrounded/killed and SSE is down.
+    if target_device.fcm_token:
+        from app.services.fcm_service import send_transfer_incoming
+        send_transfer_incoming(
+            fcm_token=target_device.fcm_token,
+            session_id=session_id,
+            file_name=file_name,
+            file_size=file_size,
+            sender_device_name=sender_name,
+        )
+
     logger.info(
         'transfer_start: session=%s user=%s size=%d target=%s',
         session_id, user.id, file_size, target_device_id,

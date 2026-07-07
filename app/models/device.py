@@ -21,6 +21,7 @@ class Device(db.Model):
         nullable=False,
     )
     app_version = db.Column(db.String(20), nullable=True)
+    fcm_token = db.Column(db.String(255), nullable=True)
     last_seen_at = db.Column(db.DateTime, nullable=False, default=utcnow)
     created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
 

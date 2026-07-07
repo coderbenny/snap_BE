@@ -32,6 +32,9 @@ def create_app(config_name=None):
     from app.celery_app import init_celery
     init_celery(app)
 
+    from app.services.fcm_service import init_fcm
+    init_fcm()
+
     _register_blueprints(app)
     _register_hooks(app)
     _register_error_handlers(app)
