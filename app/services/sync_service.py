@@ -19,17 +19,45 @@ class SyncService:
 
         Includes soft-deleted items (deleted_at set) so clients can reconcile
         local state. Fetches limit+1 to detect whether more pages exist.
+
+        Cursor stability: Python datetimes have microsecond precision but the
+        cursor is transmitted as Unix-ms (millisecond precision). If a page
+        boundary falls inside a group of items that all share the same
+        synced_at, truncating to ms and back produces a datetime slightly
+        before the original, causing the same items to satisfy the > filter
+        again → infinite loop on the client. Fix: when has_more is True,
+        extend the page to include ALL remaining items that share the last
+        item's synced_at, so the cursor always lands on a fresh timestamp.
         """
         query = select(ClipboardItem).where(ClipboardItem.user_id == user.id)
 
         if since is not None:
             query = query.where(ClipboardItem.synced_at > from_unix_ms(since))
 
-        query = query.order_by(ClipboardItem.synced_at.asc()).limit(limit + 1)
-        items = db.session.execute(query).scalars().all()
+        query = query.order_by(ClipboardItem.synced_at.asc(), ClipboardItem.id.asc()).limit(limit + 1)
+        items = list(db.session.execute(query).scalars().all())
 
         has_more = len(items) > limit
-        return list(items[:limit]), has_more
+        page = items[:limit]
+
+        # Extend the page to include all remaining items with the same
+        # synced_at as the last item, so no timestamp group is split across
+        # pages and the cursor always points past a complete group.
+        if has_more and page:
+            boundary_ts = page[-1].synced_at
+            boundary_ids = {i.id for i in page}
+            extra = db.session.execute(
+                select(ClipboardItem)
+                .where(
+                    ClipboardItem.user_id == user.id,
+                    ClipboardItem.synced_at == boundary_ts,
+                    ClipboardItem.id.notin_(boundary_ids),
+                )
+                .order_by(ClipboardItem.id.asc())
+            ).scalars().all()
+            page = page + list(extra)
+
+        return page, has_more
 
     @staticmethod
     def push(user: User, items_data: list[dict]) -> int:
