@@ -14,6 +14,7 @@ from app.schemas.auth_schemas import (
 )
 from app.services.auth_service import AuthService
 from app.utils.errors import bad_request, conflict, unauthorized, validation_failed
+from app.utils.feature_gate import can_use_file_transfer
 
 auth_bp = Blueprint('auth', __name__, url_prefix='/auth')
 
@@ -105,7 +106,7 @@ def me():
         'plan': user.plan_tier,
         'verified': user.verified_at is not None,
         'is_admin': user.is_admin,
-        'file_transfer_addon': bool(sub and sub.file_transfer_addon),
+        'file_transfer_addon': can_use_file_transfer(user),
     }
 
 

@@ -35,6 +35,7 @@ class BillingService:
                 'Cross-device clipboard history',
                 '30-day history retention',
                 'Up to 5 devices',
+                'File transfer between devices',
             ],
         },
         {
@@ -44,6 +45,7 @@ class BillingService:
             'interval': 'monthly',
             'features': [
                 'Everything in Pro',
+                'File transfer between devices',
                 'OCR text extraction from images',
                 'AI-powered clipboard actions',
                 'Smart categorisation',
@@ -56,6 +58,7 @@ class BillingService:
             'interval': 'monthly',
             'features': [
                 'Everything in Pro',
+                'File transfer between devices',
                 'Shared snippet libraries',
                 'Team management dashboard',
                 'Per-seat billing',
@@ -107,12 +110,11 @@ class BillingService:
         sub = db.session.execute(
             select(Subscription).where(Subscription.user_id == user.id)
         ).scalar_one_or_none()
+        # File transfer is now bundled into every paid tier — nothing to purchase.
+        if sub and sub.status == 'active':
+            raise ValueError('File transfer is already included in your plan')
         if not sub or sub.status != 'active':
             raise ValueError('An active subscription is required to purchase addons')
-        if sub.tier == 'team':
-            raise ValueError('File transfer is already included in your Team plan')
-        if sub.file_transfer_addon:
-            raise ValueError('File transfer addon is already active')
 
         prices = {a['id']: a['price_usd_cents'] for a in BillingService.get_addon_prices()}
         amount = prices.get(addon, 0)

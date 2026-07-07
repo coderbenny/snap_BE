@@ -1,8 +1,8 @@
 def can_use_file_transfer(user) -> bool:
-    """Return True if the user's active subscription includes file transfer."""
+    """Return True if the user's active subscription includes file transfer.
+
+    File transfer is bundled into every paid tier (pro, pro_ai, team).
+    Free users (no subscription) do not have access.
+    """
     sub = user.subscription
-    if sub is None or sub.status != 'active':
-        return False
-    if sub.tier == 'team':
-        return True
-    return bool(sub.file_transfer_addon)
+    return sub is not None and sub.status == 'active'
