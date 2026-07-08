@@ -13,7 +13,7 @@ from app.schemas.auth_schemas import (
     VerifyEmailSchema,
 )
 from app.services.auth_service import AuthService
-from app.utils.errors import bad_request, conflict, unauthorized, validation_failed
+from app.utils.errors import bad_request, conflict, error_response, unauthorized, validation_failed
 from app.utils.feature_gate import can_use_file_transfer
 
 auth_bp = Blueprint('auth', __name__, url_prefix='/auth')
@@ -57,9 +57,11 @@ def login():
         access_token, refresh_token = AuthService.login(data['email'], data['password'])
     except ValueError as e:
         if str(e) == 'EMAIL_NOT_VERIFIED':
-            return bad_request(
+            return error_response(
+                'EMAIL_NOT_VERIFIED',
                 'Please verify your email before signing in. '
-                'Check your inbox for the verification link.'
+                'Check your inbox for the verification link.',
+                400,
             )
         if str(e) == 'ACCOUNT_DISABLED':
             return bad_request('Your account has been disabled. Contact support@snapit.ink.')

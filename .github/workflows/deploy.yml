@@ -5,7 +5,7 @@ on:
     branches: [deploy]
 
 env:
-  DEPLOY_PATH: /path/to/your/app
+  DEPLOY_PATH: /home/${{ secrets.SERVER_USERNAME }}/snap_BE
   COMPOSE_PROJECT_NAME: snapit
 
 jobs:
