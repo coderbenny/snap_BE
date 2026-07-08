@@ -2,8 +2,7 @@ name: Deploy to Production
 
 on:
   push:
-    branches: [main]
-  workflow_dispatch:
+    branches: [deploy]
 
 env:
   DEPLOY_PATH: /home/${{ secrets.SERVER_USERNAME }}/snap_BE
