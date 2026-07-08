@@ -1,0 +1,131 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [deploy]
+
+env:
+  DEPLOY_PATH: /path/to/your/app
+  COMPOSE_PROJECT_NAME: snapit
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    outputs:
+      registry_image: ${{ steps.image.outputs.name }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute lowercase image name
+        id: image
+        run: |
+          echo "name=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" \
+            >> $GITHUB_OUTPUT
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.image.outputs.name }}
+          tags: |
+            type=sha,prefix=sha-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Deploy to server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_IP }}
+          username: ${{ secrets.SERVER_USERNAME }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          command_timeout: 15m
+          script: |
+            set -euo pipefail
+
+            DEPLOY_PATH="${{ env.DEPLOY_PATH }}"
+            REGISTRY_IMAGE="${{ needs.build-and-push.outputs.registry_image }}"
+            IMAGE_TAG="latest"
+            COMPOSE_PROJECT="${{ env.COMPOSE_PROJECT_NAME }}"
+
+            cd "$DEPLOY_PATH"
+
+            # ── Validate host services ─────────────────────────────────────────
+            echo "Checking Redis (6379)..."
+            nc -z localhost 6379 || { echo "ERROR: Redis not reachable — is it running on the host?"; exit 1; }
+            echo "Checking MySQL (3306)..."
+            nc -z localhost 3306 || { echo "ERROR: MySQL not reachable — is it running on the host?"; exit 1; }
+
+            # ── Pull new image ─────────────────────────────────────────────────
+            echo "Pulling image $REGISTRY_IMAGE:$IMAGE_TAG ..."
+            echo "${{ secrets.GITHUB_TOKEN }}" \
+              | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            REGISTRY_IMAGE="$REGISTRY_IMAGE" IMAGE_TAG="$IMAGE_TAG" \
+              docker compose -f docker-compose.prod.yml pull api
+
+            # ── Run migrations before swapping traffic ─────────────────────────
+            echo "Running database migrations..."
+            REGISTRY_IMAGE="$REGISTRY_IMAGE" IMAGE_TAG="$IMAGE_TAG" \
+              docker compose -f docker-compose.prod.yml run --rm api \
+                flask --app wsgi:app db upgrade
+
+            # ── Restart services with new image ────────────────────────────────
+            echo "Restarting services..."
+            REGISTRY_IMAGE="$REGISTRY_IMAGE" IMAGE_TAG="$IMAGE_TAG" \
+              APP_VERSION="${{ github.sha }}" \
+              docker compose -f docker-compose.prod.yml up -d
+
+            # ── Health check ───────────────────────────────────────────────────
+            echo "Waiting for API to become healthy..."
+            ELAPSED=0
+            until curl -sf http://127.0.0.1:5559/health > /dev/null; do
+              sleep 5
+              ELAPSED=$((ELAPSED + 5))
+              if [ "$ELAPSED" -ge 240 ]; then
+                echo "ERROR: Health check timed out after 240s"
+                REGISTRY_IMAGE="$REGISTRY_IMAGE" IMAGE_TAG="$IMAGE_TAG" \
+                  docker compose -f docker-compose.prod.yml logs api --tail=60
+                exit 1
+              fi
+              echo "  still waiting... ${ELAPSED}s elapsed"
+            done
+
+            # ── Verify response ────────────────────────────────────────────────
+            curl -sf http://127.0.0.1:5559/health | grep -q '"status"' \
+              || { echo "ERROR: Health response missing 'status' field"; exit 1; }
+
+            echo "Deployment complete! Image: $REGISTRY_IMAGE:$IMAGE_TAG"
+
+            # ── Docker image GC ────────────────────────────────────────────────
+            docker image prune -f \
+              --filter "label=com.docker.compose.project=$COMPOSE_PROJECT" \
+              || true
