@@ -5,6 +5,7 @@ from app.extensions import limiter
 from app.middleware.auth_middleware import require_auth
 from app.middleware.plan_guard import require_plan
 from app.schemas.sync_schemas import SyncDeleteSchema, SyncPushSchema
+from app.services.sse_manager import sse_manager
 from app.services.sync_service import SyncService
 from app.utils.errors import bad_request, validation_failed
 from app.utils.time import to_unix_ms
@@ -77,6 +78,11 @@ def push():
 
     count = SyncService.push(g.current_user, data['items'])
     SyncService.update_device_last_seen(g.current_user, device_id)
+
+    if count > 0:
+        # Notify all other devices immediately so they pull without waiting
+        # for their next polling cycle (~30 s). sse_manager.publish never raises.
+        sse_manager.publish(g.current_user.id, 'clip_new', {'count': count})
 
     return {'accepted': count}, 200
 
