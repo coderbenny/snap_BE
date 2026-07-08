@@ -63,15 +63,6 @@ if [ -f "$NGINX" ]; then
   echo "   nginx/nginx.conf  — domain placeholder applied"
 fi
 
-# ── Sanitize: deploy.yml — replace internal server path ───────────────────
-DEPLOY_YML="$TMPDIR/.github/workflows/deploy.yml"
-if [ -f "$DEPLOY_YML" ]; then
-  sed -i '' \
-    -e 's|/home/${{ secrets.SERVER_USERNAME }}/snap_BE|/path/to/your/app|g' \
-    "$DEPLOY_YML"
-  echo "   .github/workflows/deploy.yml — server path placeholder applied"
-fi
-
 # ── Check out from tip of main (preserves history) ────────────────────────
 echo "→  building commit on top of $TARGET_BRANCH ..."
 git fetch "$REMOTE" "$TARGET_BRANCH" --quiet
