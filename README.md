@@ -54,8 +54,8 @@ The sync backbone for **SNAP** — a universal clipboard vault with a zero-knowl
 ### 1. Clone and enter the server directory
 
 ```bash
-git clone <repo-url>
-cd snap/server
+git clone https://github.com/coderbenny/snap_BE
+cd snap_BE
 ```
 
 ### 2. Create and activate a virtual environment
