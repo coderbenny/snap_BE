@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # scripts/deploy.sh
 #
-# Publishes a clean single-commit release to the `deploy` branch.
+# Pushes the current code as a new commit on top of the `deploy` branch.
 # GitHub Actions picks this up and deploys to production.
+# History accumulates — each deployment is a real commit.
 #
 # Working tree must be clean. Run from the root of the server directory.
 #
@@ -35,12 +36,27 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# ── Create orphan commit (no history exposed) ──────────────────────────────
-git checkout --orphan "$TEMP_BRANCH" --quiet
-git rm -rf --cached . --quiet
+# ── Snapshot current working tree (respects .gitignore) ───────────────────
+TMPDIR=$(mktemp -d)
+trap "rm -rf '$TMPDIR'; cleanup" EXIT
+git archive HEAD | tar -x -C "$TMPDIR"
+
+# ── Check out from the tip of deploy (preserves history) ──────────────────
+git fetch "$REMOTE" "$DEPLOY_BRANCH" --quiet
+git checkout -b "$TEMP_BRANCH" FETCH_HEAD --quiet
+
+# ── Replace content with current working tree ─────────────────────────────
+git rm -rf . --quiet
+cp -r "$TMPDIR/." .
 git add .
 
-# Safety: reject any service-account key that slipped through .gitignore
+# Nothing changed since last deploy — skip
+if git diff --cached --quiet; then
+  echo "→  nothing to deploy (no changes since last deployment)"
+  exit 0
+fi
+
+# Safety: reject any credential file that slipped through .gitignore
 LEAKED=$(git diff --cached --name-only | grep -E 'firebase-adminsdk|service-account|\.env$' || true)
 if [ -n "$LEAKED" ]; then
   echo "ERROR: sensitive file(s) staged:" >&2
@@ -49,5 +65,5 @@ if [ -n "$LEAKED" ]; then
 fi
 
 git commit -m "$MSG" --quiet
-git push "$REMOTE" "$TEMP_BRANCH:refs/heads/$DEPLOY_BRANCH" --force --quiet
+git push "$REMOTE" "$TEMP_BRANCH:refs/heads/$DEPLOY_BRANCH" --quiet
 echo "✓  $REMOTE/$DEPLOY_BRANCH updated — GitHub Actions will now deploy."
