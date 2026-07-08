@@ -1,0 +1,24 @@
+# Firebase / GCP service account keys — never commit credentials
+*-firebase-adminsdk-*.json
+*-service-account*.json
+
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+.env
+*.log
+.DS_Store
+instance/
+.pytest_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+.coverage.*
+dist/
+build/
+*.egg-info/
