@@ -70,15 +70,6 @@ def _device_name(user_id: str, device_id: str) -> str:
     return device.name if device else 'Unknown Device'
 
 
-def _client_ip() -> str:
-    """Real client IP, honouring X-Real-IP / X-Forwarded-For from reverse proxies."""
-    return (
-        request.headers.get('X-Real-IP')
-        or request.headers.get('X-Forwarded-For', '').split(',')[0].strip()
-        or request.remote_addr
-        or ''
-    )
-
 
 def _ws_auth():
     """Authenticate a WebSocket connection via ?token= query param."""
@@ -153,8 +144,6 @@ def start_transfer():
         'sender_device_id': sender_device_id,
         'target_device_id': target_device_id,
         'sender_device_name': sender_name,
-        # Stored for same-machine detection in transfer_recv.
-        'sender_ip': _client_ip(),
     }
     r.set(_session_key(session_id), json.dumps(session_data), ex=_SESSION_TTL)
 
@@ -269,7 +258,9 @@ def transfer_send(ws, session_id):
         pipe.expire(qk, 86400)
         pipe.execute()
 
-        r.delete(_session_key(session_id))
+        # Do NOT delete the session key here: the receiver may connect after
+        # the sender finishes (race window) and needs _load_session to succeed.
+        # The key has ex=_SESSION_TTL so it expires automatically.
         logger.info(
             'transfer_send: complete session=%s bytes=%d', session_id, bytes_relayed
         )
@@ -281,7 +272,6 @@ def transfer_send(ws, session_id):
             pipe.rpush(data_key, '__ERROR__')
             pipe.expire(data_key, _SESSION_TTL)
             pipe.execute()
-            r.delete(_session_key(session_id))
         except Exception:
             pass
 
@@ -301,15 +291,6 @@ def transfer_recv(ws, session_id):
     device_id = request.args.get('device_id', '')
     if device_id != session['target_device_id']:
         ws.send(json.dumps({'error': 'Device not authorised to receive this transfer'}))
-        return
-
-    # Block same-machine transfers: if the receiver's IP matches the sender's
-    # IP, the transfer is between two processes on the same host. Cross-machine
-    # transfers are required for the feature to be useful.
-    sender_ip = session.get('sender_ip', '')
-    receiver_ip = _client_ip()
-    if sender_ip and receiver_ip and sender_ip == receiver_ip:
-        ws.send(json.dumps({'error': 'Cannot transfer files between apps on the same machine. Use a different device.'}))
         return
 
     data_key = _data_key(session_id)
