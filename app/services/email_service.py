@@ -13,7 +13,7 @@ class EmailService:
 
     @staticmethod
     def send_welcome(to_email: str) -> None:
-        EmailService._send(to_email, 'You\'re in — welcome to Snapit', _render_welcome(to_email))
+        EmailService._send(to_email, "You're in — welcome to Snapit", _render_welcome(to_email))
 
     @staticmethod
     def send_subscription_confirmed(to_email: str, tier: str) -> None:
@@ -121,7 +121,10 @@ class EmailService:
             logger.exception('email.smtp_failed to=%s subject=%r', to, subject)
 
 
-# ── Helpers ────────────────────────────────────────────────────────────────────
+# ── Constants ──────────────────────────────────────────────────────────────────
+
+_FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif"
+
 
 def _tier_label(tier: str) -> str:
     return {'pro': 'Pro', 'pro_ai': 'Pro + AI', 'team': 'Team'}.get(tier, tier.title())
@@ -129,69 +132,142 @@ def _tier_label(tier: str) -> str:
 
 # ── Base template ──────────────────────────────────────────────────────────────
 
-def _base(title: str, preview: str, header_color: str, body: str) -> str:
+def _base(title: str, preview: str, accent: str, body: str, to_email: str = '') -> str:
+    """
+    accent  — hex colour for the top stripe, icon badges, links, and CTA button
+    body    — inner HTML between logo and footer
+    """
+    preview_pad = '&nbsp;&#8203;' * 20  # prevent preview text bleed
+    sent_to = (
+        f'<tr><td style="padding:8px 0 0;text-align:center;">'
+        f'<p style="margin:0;font-family:{_FONT};font-size:12px;color:#94A3B8;">'
+        f'Sent to {to_email}</p></td></tr>'
+    ) if to_email else ''
+
     return f"""<!DOCTYPE html>
-<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml"
+      xmlns:o="urn:schemas-microsoft-com:office:office">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="x-apple-disable-message-reformatting" />
+  <meta name="format-detection" content="telephone=no,address=no,email=no,date=no,url=no" />
   <title>{title}</title>
+  <!--[if mso]>
+  <noscript><xml><o:OfficeDocumentSettings>
+    <o:PixelsPerInch>96</o:PixelsPerInch>
+  </o:OfficeDocumentSettings></xml></noscript>
+  <![endif]-->
+  <style>
+    @media only screen and (max-width:600px) {{
+      .card {{ border-radius:0 !important; }}
+      .card-pad {{ padding:28px 20px !important; }}
+      .btn-cell a {{ display:block !important;text-align:center !important; }}
+    }}
+  </style>
 </head>
-<body style="margin:0;padding:0;background-color:#ECEEF2;-webkit-font-smoothing:antialiased;">
+<body style="margin:0;padding:0;background-color:#EEF2F9;-webkit-font-smoothing:antialiased;
+             -webkit-text-size-adjust:100%;mso-line-height-rule:exactly;">
+  <!--[if mso | IE]><table role="presentation" border="0" cellpadding="0" cellspacing="0"
+    width="100%" style="background-color:#EEF2F9;"><tr><td><![endif]-->
 
-  <div style="display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;
-              color:#ECEEF2;line-height:1px;">
-    {preview}&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;&zwnj;&nbsp;&#8199;
+  <!-- Preview text -->
+  <div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">
+    {preview}{preview_pad}
   </div>
 
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
-         style="background-color:#ECEEF2;padding:40px 16px 60px;">
+  <!-- Outer wrapper -->
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+         style="background-color:#EEF2F9;padding:48px 16px 64px;">
     <tr>
       <td align="center">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
-               style="max-width:540px;">
+        <table role="presentation" class="card" cellpadding="0" cellspacing="0" border="0"
+               style="width:100%;max-width:560px;border-radius:14px;
+                      background-color:#ffffff;
+                      border:1px solid #DDE4F0;
+                      box-shadow:0 2px 8px rgba(15,23,42,0.06);">
 
-          <!-- Header -->
+          <!-- Accent stripe -->
           <tr>
-            <td style="background-color:{header_color};border-radius:12px 12px 0 0;
-                       padding:22px 32px;">
-              <table role="presentation" cellpadding="0" cellspacing="0">
+            <td style="height:4px;background-color:{accent};
+                       border-radius:13px 13px 0 0;font-size:0;line-height:0;">&nbsp;</td>
+          </tr>
+
+          <!-- Logo bar -->
+          <tr>
+            <td style="padding:22px 32px 20px;">
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0"
+                     width="100%">
                 <tr>
-                  <td style="background-color:rgba(255,255,255,0.15);border-radius:7px;
-                             padding:5px 12px;">
-                    <span style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',
-                                 Helvetica,Arial,sans-serif;font-size:14px;font-weight:700;
-                                 color:#ffffff;letter-spacing:0.8px;text-transform:uppercase;">
-                      Snapit
-                    </span>
+                  <td>
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                      <tr>
+                        <!-- Clipboard icon box -->
+                        <td style="background-color:{accent};border-radius:7px;
+                                   width:28px;height:28px;text-align:center;
+                                   vertical-align:middle;padding:0;">
+                          <span style="font-family:{_FONT};font-size:14px;
+                                       color:#ffffff;line-height:28px;display:block;">
+                            &#9635;
+                          </span>
+                        </td>
+                        <td style="padding-left:9px;vertical-align:middle;">
+                          <span style="font-family:{_FONT};font-size:15px;font-weight:700;
+                                       color:#0F172A;letter-spacing:0.5px;">
+                            Snapit
+                          </span>
+                        </td>
+                      </tr>
+                    </table>
                   </td>
                 </tr>
               </table>
             </td>
           </tr>
 
-          <!-- Body -->
+          <!-- Thin rule under logo -->
           <tr>
-            <td style="background-color:#ffffff;border-radius:0 0 12px 12px;
-                       border:1px solid #DDE1EA;border-top:none;
-                       padding:36px 36px 32px;mso-padding-alt:36px 36px 32px;">
+            <td style="padding:0 32px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td style="border-top:1px solid #EEF2F9;font-size:0;line-height:0;">&nbsp;</td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Body content -->
+          <tr>
+            <td class="card-pad" style="padding:32px 32px 36px;">
               {body}
             </td>
           </tr>
 
           <!-- Footer -->
           <tr>
-            <td style="padding:20px 8px 0;">
-              <p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',
-                         Helvetica,Arial,sans-serif;font-size:12px;color:#9AA5B8;
-                         line-height:1.6;text-align:center;">
-                Snapit · Clipboard sync for every device
-                &nbsp;·&nbsp;
-                <a href="https://snapit.ink" style="color:#9AA5B8;text-decoration:underline;">
-                  snapit.ink
-                </a>
-              </p>
+            <td style="padding:0 32px 28px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td style="border-top:1px solid #EEF2F9;font-size:0;line-height:0;
+                             padding-bottom:20px;">&nbsp;</td>
+                </tr>
+                <tr>
+                  <td>
+                    <p style="margin:0;font-family:{_FONT};font-size:12px;color:#94A3B8;
+                               line-height:1.7;text-align:center;">
+                      &copy; 2025 Snapit &nbsp;&middot;&nbsp;
+                      <a href="https://snapit.ink" style="color:#94A3B8;text-decoration:underline;">
+                        Website</a>&nbsp;&middot;&nbsp;
+                      <a href="https://snapit.ink/dashboard" style="color:#94A3B8;text-decoration:underline;">
+                        Dashboard</a>&nbsp;&middot;&nbsp;
+                      <a href="mailto:support@snapit.ink" style="color:#94A3B8;text-decoration:underline;">
+                        Support</a>
+                    </p>
+                  </td>
+                </tr>
+                {sent_to}
+              </table>
             </td>
           </tr>
 
@@ -199,276 +275,393 @@ def _base(title: str, preview: str, header_color: str, body: str) -> str:
       </td>
     </tr>
   </table>
+  <!--[if mso | IE]></td></tr></table><![endif]-->
 </body>
 </html>"""
 
 
-def _btn(url: str, text: str, bg: str = '#1C4ED8') -> str:
+# ── Component helpers ──────────────────────────────────────────────────────────
+
+def _icon_badge(symbol: str, accent: str) -> str:
+    """Large icon badge — a colored rounded box with a symbol, centred above the heading."""
     return f"""
-    <table role="presentation" cellpadding="0" cellspacing="0" style="margin-top:24px;">
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0"
+           style="margin-bottom:20px;">
       <tr>
-        <td style="border-radius:8px;background-color:{bg};">
-          <a href="{url}"
-             style="display:inline-block;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',
-                    Helvetica,Arial,sans-serif;font-size:14px;font-weight:600;color:#ffffff;
-                    text-decoration:none;padding:12px 26px;border-radius:8px;
-                    mso-padding-alt:12px 26px;">
-            {text}
-          </a>
+        <td style="background-color:{accent}1A;border-radius:14px;
+                   width:52px;height:52px;text-align:center;vertical-align:middle;">
+          <span style="font-family:{_FONT};font-size:24px;line-height:52px;
+                       color:{accent};display:block;">{symbol}</span>
         </td>
       </tr>
     </table>"""
 
 
-def _h1(text: str) -> str:
+def _h1(text: str, accent: str = '#0F172A') -> str:
     return (
-        f'<h1 style="margin:0 0 10px;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\','
-        f'Helvetica,Arial,sans-serif;font-size:21px;font-weight:700;'
-        f'color:#0D1421;line-height:1.3;">{text}</h1>'
+        f'<h1 style="margin:0 0 12px;font-family:{_FONT};font-size:22px;'
+        f'font-weight:700;color:#0F172A;line-height:1.3;">{text}</h1>'
     )
 
 
-def _p(text: str, small: bool = False, color: str = '#4A5568') -> str:
+def _p(text: str, small: bool = False, color: str = '#475569') -> str:
     size = '13px' if small else '15px'
     return (
-        f'<p style="margin:0 0 14px;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\','
-        f'Helvetica,Arial,sans-serif;font-size:{size};color:{color};line-height:1.65;">'
+        f'<p style="margin:0 0 16px;font-family:{_FONT};font-size:{size};'
+        f'color:{color};line-height:1.7;">{text}</p>'
+    )
+
+
+def _email_pill(email: str, accent: str) -> str:
+    """Inline styled badge showing the recipient email."""
+    return (
+        f'<span style="display:inline-block;background-color:{accent}15;'
+        f'border:1px solid {accent}30;border-radius:5px;'
+        f'padding:2px 8px;font-family:{_FONT};font-size:13px;'
+        f'font-weight:600;color:{accent};">{email}</span>'
+    )
+
+
+def _btn(url: str, text: str, accent: str) -> str:
+    return f"""
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0"
+           style="margin:24px 0 4px;">
+      <tr>
+        <td class="btn-cell" style="border-radius:9px;background-color:{accent};">
+          <!--[if mso]><v:roundrect xmlns:v="urn:schemas-microsoft-com:vml"
+            xmlns:w="urn:schemas-microsoft-com:office:word"
+            href="{url}" style="height:46px;v-text-anchor:middle;width:200px;"
+            arcsize="20%" stroke="f" fillcolor="{accent}">
+            <w:anchorlock/>
+            <center style="color:#ffffff;font-family:sans-serif;font-size:14px;
+                           font-weight:bold;">{text}</center>
+          </v:roundrect><![endif]-->
+          <!--[if !mso]><!-->
+          <a href="{url}"
+             style="display:inline-block;font-family:{_FONT};font-size:14px;
+                    font-weight:600;color:#ffffff;text-decoration:none;
+                    padding:13px 32px;border-radius:9px;
+                    mso-hide:all;">
+            {text}
+          </a>
+          <!--<![endif]-->
+        </td>
+      </tr>
+    </table>"""
+
+
+def _feature_list(items: list, accent: str = '#1D4ED8') -> str:
+    rows = ''.join(
+        f'<tr>'
+        f'<td style="width:24px;vertical-align:top;padding:6px 8px 6px 0;">'
+        f'<div style="width:18px;height:18px;background-color:{accent}18;'
+        f'border-radius:50%;text-align:center;line-height:18px;">'
+        f'<span style="font-family:{_FONT};font-size:10px;font-weight:700;'
+        f'color:{accent};">&#10003;</span>'
+        f'</div></td>'
+        f'<td style="padding:6px 0;font-family:{_FONT};font-size:14px;'
+        f'color:#334155;line-height:1.5;">{item}</td>'
+        f'</tr>'
+        for item in items
+    )
+    return (
+        f'<table role="presentation" cellpadding="0" cellspacing="0" border="0"'
+        f' style="margin:20px 0;padding:16px 18px;background:#F8FAFC;'
+        f'border-radius:10px;border:1px solid #E2E8F0;width:100%;">'
+        f'<tbody>{rows}</tbody></table>'
+    )
+
+
+def _security_box(text: str) -> str:
+    """Gray callout box for security-relevant notes."""
+    return (
+        f'<table role="presentation" cellpadding="0" cellspacing="0" border="0"'
+        f' style="margin:20px 0 0;width:100%;">'
+        f'<tr><td style="background-color:#F1F5F9;border-radius:9px;'
+        f'border-left:3px solid #CBD5E1;padding:13px 16px;">'
+        f'<p style="margin:0;font-family:{_FONT};font-size:13px;'
+        f'color:#475569;line-height:1.65;">'
+        f'<span style="font-weight:600;color:#334155;">&#128274;&nbsp; Security note&nbsp;&nbsp;</span>'
         f'{text}</p>'
+        f'</td></tr></table>'
+    )
+
+
+def _warning_box(text: str, accent: str) -> str:
+    """Coloured callout box for warnings and important notices."""
+    return (
+        f'<table role="presentation" cellpadding="0" cellspacing="0" border="0"'
+        f' style="margin:20px 0 0;width:100%;">'
+        f'<tr><td style="background-color:{accent}0F;border-radius:9px;'
+        f'border-left:3px solid {accent};padding:13px 16px;">'
+        f'<p style="margin:0;font-family:{_FONT};font-size:13px;'
+        f'color:#475569;line-height:1.65;">{text}</p>'
+        f'</td></tr></table>'
     )
 
 
 def _divider() -> str:
     return (
-        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
-        'style="margin:24px 0 20px;">'
-        '<tr><td style="border-top:1px solid #EDF0F5;font-size:0;line-height:0;">&nbsp;</td></tr>'
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"'
+        ' style="margin:24px 0;">'
+        '<tr><td style="border-top:1px solid #EEF2F9;font-size:0;line-height:0;">&nbsp;</td></tr>'
         '</table>'
     )
 
 
-def _feature_list(items: list) -> str:
-    rows = ''.join(
-        f'<tr><td style="padding:5px 0;">'
-        f'<table role="presentation" cellpadding="0" cellspacing="0"><tr>'
-        f'<td style="width:20px;vertical-align:top;padding-top:1px;">'
-        f'<span style="font-size:13px;">&#10003;</span></td>'
-        f'<td style="font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Helvetica,Arial,'
-        f'sans-serif;font-size:14px;color:#4A5568;line-height:1.5;">{item}</td>'
-        f'</tr></table></td></tr>'
-        for item in items
-    )
-    return (
-        f'<table role="presentation" cellpadding="0" cellspacing="0" '
-        f'style="margin:16px 0 0;padding:16px 18px;background:#F7F8FC;'
-        f'border-radius:8px;width:100%;">'
-        f'<tbody>{rows}</tbody></table>'
-    )
-
-
-# ── Templates ──────────────────────────────────────────────────────────────────
-
-def _render_welcome(email: str) -> str:
-    body = (
-        _h1('Your clipboard vault is ready.')
-        + _p(
-            f'Hi <strong style="color:#0D1421;">{email}</strong> — your email is confirmed '
-            'and your Snapit account is live. '
-            'Download the app on your devices and anything you copy will be waiting on all of them.'
-        )
-        + _feature_list([
-            'Copy on your Mac, paste on your Windows PC',
-            'Full clipboard history — never lose something you copied',
-            'End-to-end encrypted so only you can read your clips',
-        ])
-        + _btn('https://snapit.ink/download', 'Download Snapit')
-        + _divider()
-        + _p(
-            'Questions? Just reply to this email — we read every one.',
-            small=True,
-            color='#9AA5B8',
-        )
-    )
-    return _base(
-        'Welcome to Snapit',
-        'Your email is confirmed. Download the app and start syncing your clipboard.',
-        '#1C4ED8',
-        body,
-    )
-
+# ── Email templates ────────────────────────────────────────────────────────────
 
 def _render_verification(email: str, verify_url: str) -> str:
+    ACCENT = '#4F46E5'
     body = (
-        _h1('One step before you start syncing.')
+        _icon_badge('&#9993;', ACCENT)
+        + _h1('Confirm your email address')
         + _p(
-            f'You signed up with <strong style="color:#0D1421;">{email}</strong>. '
-            'Confirm that address and your account will be ready to go — '
-            'this takes two seconds.'
+            f'You signed up with {_email_pill(email, ACCENT)}. '
+            'Tap the button below to verify that address and activate your account — '
+            'it only takes a second.'
         )
-        + _btn(verify_url, 'Confirm my email')
-        + _divider()
+        + _btn(verify_url, 'Verify my email', ACCENT)
         + _p(
-            '<strong style="color:#0D1421;">Link expires in 24 hours.</strong> '
-            'If you didn\'t sign up for Snapit, ignore this — no account will be created.',
+            f'Or copy and paste this link into your browser:<br/>'
+            f'<span style="font-family:\'SF Mono\',\'Fira Code\',monospace;font-size:12px;'
+            f'color:#64748B;word-break:break-all;">{verify_url}</span>',
             small=True,
-            color='#9AA5B8',
+            color='#64748B',
+        )
+        + _security_box(
+            'This link expires in <strong style="color:#334155;">24 hours</strong> and works once. '
+            "If you didn't create a Snapit account, you can safely ignore this email — "
+            'no account will be created.'
         )
     )
     return _base(
         'Confirm your Snapit email',
-        'Confirm your email to activate your account and start syncing.',
-        '#1C4ED8',
+        'Verify your email address to activate your Snapit account and start syncing.',
+        ACCENT,
         body,
+        email,
+    )
+
+
+def _render_welcome(email: str) -> str:
+    ACCENT = '#0EA5E9'
+    body = (
+        _icon_badge('&#9733;', ACCENT)
+        + _h1("You're all set. Welcome to Snapit.")
+        + _p(
+            f'Hi {_email_pill(email, ACCENT)} — your email is confirmed and your account is live. '
+            'Install the app on your Mac, phone, or both and everything you copy '
+            'will be waiting on all of them instantly.'
+        )
+        + _feature_list(
+            [
+                '<strong>Copy anywhere, paste everywhere</strong> — real-time clipboard sync',
+                '<strong>Never lose a clip</strong> — full history with instant search',
+                '<strong>End-to-end encrypted</strong> — only you can read your clipboard',
+                '<strong>File transfer</strong> — send files between devices over a secure relay',
+            ],
+            ACCENT,
+        )
+        + _btn('https://snapit.ink/download', 'Download the app', ACCENT)
+        + _divider()
+        + _p(
+            'Got questions? Reply to this email — we read every one.',
+            small=True,
+            color='#94A3B8',
+        )
+    )
+    return _base(
+        'Welcome to Snapit',
+        'Your account is confirmed. Download the app and start syncing your clipboard across every device.',
+        ACCENT,
+        body,
+        email,
     )
 
 
 def _render_password_reset(email: str, reset_url: str) -> str:
+    ACCENT = '#7C3AED'
     body = (
-        _h1('Reset your password.')
+        _icon_badge('&#128273;', ACCENT)
+        + _h1('Reset your password')
         + _p(
-            f'We received a password reset request for '
-            f'<strong style="color:#0D1421;">{email}</strong>. '
-            'Click below to choose a new password. '
-            'If this wasn\'t you, your account is safe — just ignore this email.'
+            f'We received a password reset request for {_email_pill(email, ACCENT)}. '
+            'Click the button below to choose a new password. '
+            "If this wasn't you, your account is safe — just ignore this email."
         )
-        + _btn(reset_url, 'Choose a new password')
-        + _divider()
+        + _btn(reset_url, 'Choose a new password', ACCENT)
         + _p(
-            '<strong style="color:#0D1421;">This link expires in 1 hour</strong> '
-            'and can only be used once. After resetting, you\'ll be signed out of all devices.',
+            f'Or copy and paste this link into your browser:<br/>'
+            f'<span style="font-family:\'SF Mono\',\'Fira Code\',monospace;font-size:12px;'
+            f'color:#64748B;word-break:break-all;">{reset_url}</span>',
             small=True,
-            color='#9AA5B8',
+            color='#64748B',
+        )
+        + _security_box(
+            'This link expires in <strong style="color:#334155;">1 hour</strong> and can only be '
+            'used once. After resetting, you will be signed out of all devices. '
+            "If you didn't request this, no action is needed."
         )
     )
     return _base(
         'Reset your Snapit password',
-        'Reset your password — this link expires in 1 hour.',
-        '#374151',
+        'Reset your Snapit password — this link expires in 1 hour.',
+        ACCENT,
         body,
+        email,
     )
 
 
 def _render_subscription_confirmed(email: str, tier: str) -> str:
+    ACCENT = '#059669'
     label = _tier_label(tier)
     features = {
         'pro': [
-            'Unlimited sync across all your devices',
-            '30-day clipboard history',
-            'Up to 5 devices at once',
+            '<strong>Cross-device sync</strong> — all your devices, always in sync',
+            '<strong>Unlimited clipboard history</strong> — never limited again',
+            '<strong>Up to 5 devices</strong> — Mac, Windows, Android, and more',
+            '<strong>File transfer</strong> — send files between any two devices instantly',
+            '<strong>Priority support</strong> — get to the front of the queue',
         ],
         'pro_ai': [
-            'Everything in Pro',
-            'OCR — pull text out of any image you copy',
-            'AI-powered clipboard actions',
-            'Smart auto-categorisation',
+            '<strong>Everything in Pro</strong> — all Pro features included',
+            '<strong>OCR</strong> — pull text straight out of any image you copy',
+            '<strong>AI clipboard actions</strong> — translate, summarise, reformat in one tap',
+            '<strong>Smart auto-categorisation</strong> — clips organised automatically',
         ],
         'team': [
-            'Everything in Pro',
-            'Shared snippet libraries for your whole team',
-            'Team management dashboard',
-            'Per-seat billing, cancel anytime',
+            '<strong>Everything in Pro</strong> — all Pro features included',
+            '<strong>Shared snippet library</strong> — clips your whole team can access',
+            '<strong>Team management</strong> — invite, remove, and manage members',
+            '<strong>Per-seat billing</strong> — only pay for who\'s on the team',
         ],
     }.get(tier, [])
 
     body = (
-        _h1(f'{label} is active on your account.')
+        _icon_badge('&#10003;', ACCENT)
+        + _h1(f'Your {label} plan is active.')
         + _p(
-            f'Your <strong style="color:#0D1421;">{label}</strong> subscription is confirmed '
-            'and your upgraded features are live across all your devices right now.'
+            f'Your <strong style="color:#0F172A;">{label}</strong> subscription is confirmed. '
+            'Your upgraded features are live across all your devices right now — '
+            'no restart needed.'
         )
-        + (_feature_list(features) if features else '')
-        + _btn('https://snapit.ink/dashboard', 'Open dashboard')
+        + (_feature_list(features, ACCENT) if features else '')
+        + _btn('https://snapit.ink/dashboard', 'Open your dashboard', ACCENT)
         + _divider()
         + _p(
             'Your subscription renews automatically. Cancel or manage it any time from '
-            '<a href="https://snapit.ink/billing" style="color:#1C4ED8;text-decoration:none;">'
-            'your billing page</a>.',
+            f'<a href="https://snapit.ink/billing" style="color:{ACCENT};text-decoration:none;'
+            f'font-weight:600;">your billing page</a>. '
+            'Questions? Reply to this email.',
             small=True,
-            color='#9AA5B8',
+            color='#94A3B8',
         )
     )
     return _base(
         f'Snapit {label} — active',
-        f'Your {label} plan is live. Here\'s everything you just unlocked.',
-        '#166534',
+        f"Your {label} plan is live. Here's everything you just unlocked.",
+        ACCENT,
         body,
+        email,
     )
 
 
 def _render_payment_failed(email: str) -> str:
+    ACCENT = '#DC2626'
     body = (
-        _h1('We couldn\'t process your payment.')
+        _icon_badge('&#9888;', ACCENT)
+        + _h1("We couldn't process your payment.")
         + _p(
-            'Your Snapit subscription renewal failed. '
-            'This usually means your card was declined or expired. '
-            'If it isn\'t updated within <strong style="color:#0D1421;">7 days</strong>, '
-            'your account will move to the free plan and cross-device sync will stop.'
+            'Your Snapit subscription renewal failed — your card was declined or has expired. '
+            'Update your payment method to keep your plan active.'
         )
-        + _btn('https://snapit.ink/billing', 'Update payment method', '#B91C1C')
+        + _warning_box(
+            f'<strong style="color:#7F1D1D;">If not resolved within 7 days</strong>, '
+            'your account will move to the free plan and cross-device sync will stop.',
+            ACCENT,
+        )
+        + _btn('https://snapit.ink/billing', 'Update payment method', ACCENT)
         + _divider()
         + _p(
-            'Already updated your card? It may take a few minutes to retry. '
-            'Reply to this email if you need help sorting it out.',
+            "Already updated your card? It may take a few minutes to retry. "
+            "Reply to this email if you need help sorting it out.",
             small=True,
-            color='#9AA5B8',
+            color='#94A3B8',
         )
     )
     return _base(
         'Snapit — payment failed',
-        'Action needed: we couldn\'t charge your card for your Snapit renewal.',
-        '#B91C1C',
+        "Action needed: we couldn't charge your card for your Snapit renewal.",
+        ACCENT,
         body,
+        email,
     )
 
 
 def _render_expiry_warning(email: str, date_str: str) -> str:
+    ACCENT = '#D97706'
     body = (
-        _h1(f'Your plan expires on {date_str}.')
+        _icon_badge('&#9201;', ACCENT)
+        + _h1(f'Your plan expires on {date_str}.')
         + _p(
-            'After that date your account moves to the free plan — '
-            'sync between devices will stop and your history will be limited. '
-            'Renew now to keep everything running without interruption.'
+            "Your Snapit subscription is expiring soon. After that date your account "
+            "moves to the free plan — sync between devices will stop and your history "
+            "will be limited to 100 items."
         )
-        + _btn('https://snapit.ink/billing', 'Renew my plan')
+        + _warning_box(
+            'Renew now to keep everything running without interruption. '
+            'All your clips, history, and settings are preserved.',
+            ACCENT,
+        )
+        + _btn('https://snapit.ink/billing', 'Renew my plan', ACCENT)
         + _divider()
         + _p(
-            'Not renewing? No action needed — your account stays active on the free plan '
-            'and your existing clips are kept safe.',
+            "Not renewing? No action needed — your account stays active on the free plan "
+            "and your existing clips are kept safe.",
             small=True,
-            color='#9AA5B8',
+            color='#94A3B8',
         )
     )
     return _base(
         'Snapit subscription expiring soon',
         f'Your Snapit plan expires {date_str}. Renew to keep syncing across devices.',
-        '#92400E',
+        ACCENT,
         body,
+        email,
     )
 
 
 def _render_subscription_cancelled(email: str) -> str:
+    ACCENT = '#64748B'
     body = (
-        _h1('Your subscription has been cancelled.')
+        _icon_badge('&#8594;', ACCENT)
+        + _h1('Your subscription has been cancelled.')
         + _p(
-            'Your Snapit subscription is cancelled and your account is now on the free plan. '
-            'Your clipboard history is still there — '
-            'you just won\'t sync new clips across devices.'
+            'Your Snapit subscription is now cancelled and your account has moved to '
+            'the free plan. Your clipboard history is still there — '
+            "you just won't sync new clips across devices."
         )
-        + _feature_list([
-            'Your account and all existing clips are preserved',
-            'You can resubscribe any time and pick up where you left off',
-            'Local clipboard history on each device still works',
-        ])
-        + _btn('https://snapit.ink/billing', 'Resubscribe')
+        + _feature_list(
+            [
+                '<strong>Your account is preserved</strong> — all your existing clips are safe',
+                '<strong>Local history still works</strong> — clipboard history on each device continues',
+                '<strong>Resubscribe any time</strong> — pick up exactly where you left off',
+            ],
+            ACCENT,
+        )
+        + _btn('https://snapit.ink/billing', 'Resubscribe', ACCENT)
         + _divider()
         + _p(
-            "Cancelled by mistake or changed your mind? Reply to this email and we'll sort it out.",
+            "Cancelled by mistake or changed your mind? Reply to this email and we'll sort it out right away.",
             small=True,
-            color='#9AA5B8',
+            color='#94A3B8',
         )
     )
     return _base(
         'Snapit subscription cancelled',
-        'Your subscription is cancelled. Your account and clips are still safe.',
-        '#374151',
+        'Your subscription is cancelled. Your account and all your clips are still safe.',
+        ACCENT,
         body,
+        email,
     )
