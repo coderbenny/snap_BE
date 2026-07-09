@@ -38,6 +38,8 @@ def send_transfer_incoming(
     file_name: str,
     file_size: int,
     sender_device_name: str,
+    mime_type: str = 'application/octet-stream',
+    target_device_id: str = '',
 ) -> None:
     """Send a data-only FCM push for an incoming transfer.
     Silently no-ops if Firebase is not initialised or the send fails."""
@@ -52,6 +54,8 @@ def send_transfer_incoming(
                 'file_name': file_name,
                 'file_size': str(file_size),
                 'sender_device_name': sender_device_name,
+                'mime_type': mime_type,
+                'target_device_id': target_device_id,
             },
             android=messaging.AndroidConfig(priority='high'),
             token=fcm_token,
