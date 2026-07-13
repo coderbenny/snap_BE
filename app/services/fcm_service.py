@@ -32,6 +32,27 @@ def init_fcm() -> bool:
         return False
 
 
+def send_clip_new(fcm_tokens: list[str], count: int) -> None:
+    """Notify mobile devices that new clipboard items are ready to pull.
+    Sent as a data-only FCM message so it wakes the app silently in the
+    background and the mobile handler can show a local notification + sync."""
+    if not _initialized or not fcm_tokens:
+        return
+    try:
+        from firebase_admin import messaging
+        messages = [
+            messaging.Message(
+                data={'type': 'clip_new', 'count': str(count)},
+                android=messaging.AndroidConfig(priority='normal'),
+                token=token,
+            )
+            for token in fcm_tokens
+        ]
+        messaging.send_each(messages)
+    except Exception:
+        logger.exception('FCM send_clip_new failed for %d token(s)', len(fcm_tokens))
+
+
 def send_transfer_incoming(
     fcm_token: str,
     session_id: str,
