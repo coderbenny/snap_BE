@@ -20,7 +20,8 @@ x-common-env: &common-env
 
 services:
   api:
-    image: ${REGISTRY_IMAGE}:${IMAGE_TAG:-latest}
+    build: .
+    image: ${REGISTRY_IMAGE:-snapit-api}:${IMAGE_TAG:-latest}
     network_mode: host
     environment:
       <<: *common-env
@@ -34,7 +35,7 @@ services:
       start_period: 30s
 
   celery_worker:
-    image: ${REGISTRY_IMAGE}:${IMAGE_TAG:-latest}
+    image: ${REGISTRY_IMAGE:-snapit-api}:${IMAGE_TAG:-latest}
     network_mode: host
     command: celery -A wsgi.celery worker --loglevel=info --concurrency=2
     environment:
@@ -45,7 +46,7 @@ services:
         condition: service_healthy
 
   celery_beat:
-    image: ${REGISTRY_IMAGE}:${IMAGE_TAG:-latest}
+    image: ${REGISTRY_IMAGE:-snapit-api}:${IMAGE_TAG:-latest}
     network_mode: host
     command: celery -A wsgi.celery beat --loglevel=info --scheduler celery.beat.PersistentScheduler --schedule /tmp/celerybeat-schedule
     environment:
