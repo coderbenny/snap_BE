@@ -5,6 +5,9 @@ from app.extensions import limiter
 from app.middleware.auth_middleware import require_auth
 from app.middleware.plan_guard import require_plan
 from app.schemas.sync_schemas import SyncDeleteSchema, SyncPushSchema
+from app.services.device_service import DeviceService
+from app.services.fcm_service import send_clip_new
+from app.services.sse_manager import sse_manager
 from app.services.sync_service import SyncService
 from app.utils.errors import bad_request, validation_failed
 from app.utils.time import to_unix_ms
@@ -77,6 +80,20 @@ def push():
 
     count = SyncService.push(g.current_user, data['items'])
     SyncService.update_device_last_seen(g.current_user, device_id)
+
+    if count > 0:
+        # Notify all other devices immediately via SSE (foreground) and FCM
+        # (background). sse_manager.publish and send_clip_new never raise.
+        sse_manager.publish(g.current_user.id, 'clip_new', {'count': count})
+
+        # FCM wakes mobile devices that are backgrounded (SSE is dead there).
+        # Only send to devices OTHER than the one that just pushed.
+        tokens = [
+            d.fcm_token
+            for d in DeviceService.list_for_user(g.current_user)
+            if d.fcm_token and d.id != device_id
+        ]
+        send_clip_new(tokens, count)
 
     return {'accepted': count}, 200
 

@@ -165,6 +165,8 @@ def start_transfer():
             file_name=file_name,
             file_size=file_size,
             sender_device_name=sender_name,
+            mime_type=mime_type,
+            target_device_id=target_device_id,
         )
 
     logger.info(

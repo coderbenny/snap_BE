@@ -12,7 +12,14 @@ def init_celery(app):
             with app.app_context():
                 return self.run(*args, **kwargs)
 
-    celery.config_from_object(app.config, namespace='CELERY')
+    celery.conf.update(
+        broker_url=app.config['CELERY_BROKER_URL'],
+        result_backend=app.config['CELERY_RESULT_BACKEND'],
+        task_serializer='json',
+        result_serializer='json',
+        accept_content=['json'],
+        broker_connection_retry_on_startup=True,
+    )
     celery.conf.include = ['app.tasks.email_tasks']
     celery.Task = ContextTask
 
