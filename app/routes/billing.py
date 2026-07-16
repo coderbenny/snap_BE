@@ -7,6 +7,7 @@ from marshmallow import ValidationError
 
 from app.extensions import db, limiter
 from app.middleware.auth_middleware import require_auth
+from app.models.coupon import Coupon
 from app.models.user import User
 from app.schemas.billing_schemas import SubscribeSchema
 from app.services.billing_service import BillingService
@@ -18,6 +19,7 @@ from app.utils.errors import (
     validation_failed,
 )
 from app.utils.redis_client import get_redis
+from app.utils.time import utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +36,60 @@ def get_plans():
     }
 
 
+@billing_bp.post('/validate-coupon')
+@require_auth
+def validate_coupon():
+    """Read-only coupon check. Returns discount preview with no side effects."""
+    body = request.get_json(silent=True) or {}
+    code = (body.get('code') or '').strip().upper()
+    tier = (body.get('tier') or '').strip()
+
+    if not code:
+        return bad_request('code is required')
+    if tier not in ('pro', 'pro_ai', 'team'):
+        return bad_request('tier must be one of: pro, pro_ai, team')
+
+    from sqlalchemy import select
+    coupon = db.session.execute(
+        select(Coupon).where(Coupon.code == code)
+    ).scalar_one_or_none()
+
+    if not coupon or not coupon.is_active:
+        return bad_request('Invalid or inactive coupon code')
+
+    now = utcnow()
+    if coupon.valid_from and coupon.valid_from > now:
+        return bad_request('This coupon is not yet valid')
+    if coupon.valid_until and coupon.valid_until < now:
+        return bad_request('This coupon has expired')
+    if coupon.max_uses is not None and coupon.current_uses >= coupon.max_uses:
+        return bad_request('This coupon has reached its usage limit')
+    if coupon.tier_restriction and coupon.tier_restriction != tier:
+        return bad_request(f'This coupon is only valid for the {coupon.tier_restriction} plan')
+
+    plan = next((p for p in BillingService.PLANS if p['tier'] == tier), None)
+    if not plan:
+        return bad_request(f"Unknown tier '{tier}'")
+
+    original = plan['price_usd_cents']
+    if coupon.discount_type == 'percentage':
+        discount_amount = int(original * coupon.discount_value / 100)
+    else:
+        discount_amount = min(coupon.discount_value, original)
+
+    discounted = max(0, original - discount_amount)
+
+    return {
+        'valid': True,
+        'code': coupon.code,
+        'description': coupon.description or '',
+        'discount_type': coupon.discount_type,
+        'discount_value': coupon.discount_value,
+        'original_price_cents': original,
+        'discounted_price_cents': discounted,
+    }, 200
+
+
 @billing_bp.post('/subscribe')
 @require_auth
 def subscribe():
@@ -47,6 +103,7 @@ def subscribe():
             g.current_user,
             data['tier'],
             data.get('callback_url'),
+            coupon_code=data.get('coupon_code'),
         )
     except ValueError as e:
         return bad_request(str(e))
