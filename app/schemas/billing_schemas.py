@@ -10,3 +10,4 @@ class SubscribeSchema(Schema):
         ),
     )
     callback_url = fields.Str(load_default=None, allow_none=True)
+    coupon_code = fields.Str(load_default=None, allow_none=True)

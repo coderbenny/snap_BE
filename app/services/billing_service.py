@@ -8,6 +8,7 @@ from flask import current_app
 from sqlalchemy import select
 
 from app.extensions import db
+from app.models.coupon import Coupon, CouponUse
 from app.models.subscription import Subscription
 from app.models.user import User
 from app.services.sse_manager import sse_manager
@@ -161,22 +162,57 @@ class BillingService:
         return {'status': 'success', 'addon': 'file_transfer', 'reference': reference}
 
     @staticmethod
-    def initialize_transaction(user: User, tier: str, callback_url: str | None) -> dict:
+    def initialize_transaction(
+        user: User,
+        tier: str,
+        callback_url: str | None,
+        coupon_code: str | None = None,
+    ) -> dict:
         """Initialize a Paystack transaction.
 
         Returns a dict with authorization_url, access_code, and reference so
         the frontend can choose between inline popup (access_code) or redirect
         (authorization_url).
+
+        When coupon_code is provided it is re-validated server-side (never
+        trust the frontend alone), the discounted amount is passed to Paystack
+        so the first charge reflects the discount, and the coupon id is stored
+        in metadata so verify_transaction can record the use.
         """
         plan_code = current_app.config.get('PAYSTACK_PLANS', {}).get(tier)
         if not plan_code:
             raise ValueError(f"No Paystack plan configured for tier '{tier}'")
 
+        plan = next((p for p in BillingService.PLANS if p['tier'] == tier), None)
+        original_amount = plan['price_usd_cents'] if plan else 0
+
+        coupon = None
+        discounted_amount = original_amount
+
+        if coupon_code:
+            coupon = BillingService._validate_coupon_for_tier(
+                coupon_code.strip().upper(), tier
+            )
+            if coupon.discount_type == 'percentage':
+                discount = int(original_amount * coupon.discount_value / 100)
+            else:
+                discount = min(coupon.discount_value, original_amount)
+            discounted_amount = max(0, original_amount - discount)
+
+        # 100% coupon — activate directly, no payment needed.
+        if coupon and discounted_amount == 0:
+            BillingService._activate_free_coupon_subscription(user, tier, coupon)
+            return {'free': True, 'tier': tier}
+
+        metadata: dict = {'user_id': user.id, 'tier': tier}
+        if coupon:
+            metadata['coupon_id'] = coupon.id
+
         payload: dict = {
             'email': user.email,
-            'amount': 0,      # overridden by the plan
+            'amount': discounted_amount,
             'plan': plan_code,
-            'metadata': {'user_id': user.id, 'tier': tier},
+            'metadata': metadata,
         }
         if callback_url:
             payload['callback_url'] = callback_url
@@ -188,6 +224,76 @@ class BillingService:
             'access_code': d['access_code'],
             'reference': d['reference'],
         }
+
+    @staticmethod
+    def _activate_free_coupon_subscription(user: User, tier: str, coupon: 'Coupon') -> None:
+        """Activate a subscription directly for a 100% coupon — no Paystack involved.
+
+        The subscription expires after one billing period (30 days for monthly
+        plans). When it lapses the user's plan falls back to free and they must
+        go through the normal Paystack flow to continue, which maintains full
+        billing consistency: no $0 Paystack transactions, no orphaned
+        subscriptions, and no risk of the free access persisting indefinitely.
+        """
+        now = utcnow()
+        expires = now + timedelta(days=30)
+
+        sub = db.session.execute(
+            select(Subscription).where(Subscription.user_id == user.id)
+        ).scalar_one_or_none()
+
+        if sub:
+            sub.tier = tier
+            sub.status = 'active'
+            sub.expires_at = expires
+            # Clear any stale Paystack codes so the portal endpoint doesn't
+            # try to look up a subscription that was never created.
+            sub.paystack_sub_code = None
+        else:
+            db.session.add(Subscription(
+                user_id=user.id,
+                tier=tier,
+                status='active',
+                expires_at=expires,
+            ))
+
+        user.plan_tier = tier
+        db.session.commit()
+
+        BillingService._record_coupon_use(coupon.id, user.id, tier)
+        sse_manager.publish(user.id, 'plan_changed', {'plan': tier})
+        logger.info(
+            'Free-coupon subscription activated: user=%s tier=%s expires=%s',
+            user.id, tier, expires.isoformat(),
+        )
+
+        try:
+            from app.services.email_service import EmailService
+            EmailService.send_subscription_confirmed(user.email, tier)
+        except Exception:
+            logger.exception('Failed to send subscription email to %s', user.email)
+
+    @staticmethod
+    def _validate_coupon_for_tier(code: str, tier: str) -> 'Coupon':
+        """Validate a coupon server-side and return it. Raises ValueError on any failure."""
+        coupon = db.session.execute(
+            select(Coupon).where(Coupon.code == code)
+        ).scalar_one_or_none()
+
+        if not coupon or not coupon.is_active:
+            raise ValueError('Invalid or inactive coupon code')
+
+        now = utcnow()
+        if coupon.valid_from and coupon.valid_from > now:
+            raise ValueError('This coupon is not yet valid')
+        if coupon.valid_until and coupon.valid_until < now:
+            raise ValueError('This coupon has expired')
+        if coupon.max_uses is not None and coupon.current_uses >= coupon.max_uses:
+            raise ValueError('This coupon has reached its usage limit')
+        if coupon.tier_restriction and coupon.tier_restriction != tier:
+            raise ValueError(f'This coupon is only valid for the {coupon.tier_restriction} plan')
+
+        return coupon
 
     @staticmethod
     def verify_transaction(user: User, reference: str) -> dict:
@@ -246,6 +352,11 @@ class BillingService:
             user.plan_tier = tier
             db.session.commit()
             logger.info('Plan activated via verify: user=%s tier=%s', user.id, tier)
+
+        # Record coupon use if one was applied (idempotent — skip if already recorded)
+        coupon_id = (d.get('metadata') or {}).get('coupon_id')
+        if coupon_id and tier:
+            BillingService._record_coupon_use(coupon_id, user.id, tier)
 
         return {'status': d['status'], 'tier': tier or user.plan_tier, 'reference': reference}
 
@@ -344,6 +455,10 @@ class BillingService:
         user.plan_tier = tier
         db.session.commit()
         sse_manager.publish(user.id, 'plan_changed', {'plan': tier})
+
+        coupon_id = (data.get('metadata') or {}).get('coupon_id')
+        if coupon_id:
+            BillingService._record_coupon_use(coupon_id, user.id, tier)
 
         try:
             from app.services.email_service import EmailService
@@ -454,6 +569,30 @@ class BillingService:
             sse_manager.publish(user_id, 'addon_activated', {'addon': addon})
 
     # ── Helpers ───────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _record_coupon_use(coupon_id: str, user_id: str, tier: str) -> None:
+        """Increment coupon.current_uses and write a CouponUse row. Idempotent."""
+        try:
+            existing = db.session.execute(
+                select(CouponUse).where(
+                    CouponUse.coupon_id == coupon_id,
+                    CouponUse.user_id == user_id,
+                )
+            ).scalar_one_or_none()
+            if existing:
+                return  # already recorded (verify + webhook both fire)
+
+            coupon = db.session.get(Coupon, coupon_id)
+            if not coupon:
+                return
+
+            db.session.add(CouponUse(coupon_id=coupon_id, user_id=user_id, tier=tier))
+            coupon.current_uses += 1
+            db.session.commit()
+            logger.info('Coupon use recorded: coupon=%s user=%s tier=%s', coupon_id, user_id, tier)
+        except Exception:
+            logger.exception('Failed to record coupon use: coupon=%s user=%s', coupon_id, user_id)
 
     @staticmethod
     def _tier_from_plan_code(plan_code: str) -> str | None:

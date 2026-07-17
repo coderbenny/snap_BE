@@ -29,9 +29,6 @@ class BaseConfig:
     # Celery — uses Redis as both broker and result backend
     CELERY_BROKER_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
     CELERY_RESULT_BACKEND = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
-    CELERY_TASK_SERIALIZER = 'json'
-    CELERY_RESULT_SERIALIZER = 'json'
-    CELERY_ACCEPT_CONTENT = ['json']
 
     # Email — Resend is primary; Google SMTP is the fallback.
     RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '')

@@ -74,7 +74,8 @@ jobs:
 
             DEPLOY_PATH="${{ env.DEPLOY_PATH }}"
             REGISTRY_IMAGE="${{ needs.build-and-push.outputs.registry_image }}"
-            IMAGE_TAG="latest"
+            FULL_SHA="${{ github.sha }}"
+            IMAGE_TAG="sha-${FULL_SHA:0:7}"
             COMPOSE_PROJECT="${{ env.COMPOSE_PROJECT_NAME }}"
 
             cd "$DEPLOY_PATH"
@@ -102,7 +103,7 @@ jobs:
             echo "Restarting services..."
             REGISTRY_IMAGE="$REGISTRY_IMAGE" IMAGE_TAG="$IMAGE_TAG" \
               APP_VERSION="${{ github.sha }}" \
-              docker compose -f docker-compose.prod.yml up -d
+              docker compose -f docker-compose.prod.yml up -d --force-recreate
 
             # ── Health check ───────────────────────────────────────────────────
             echo "Waiting for API to become healthy..."
