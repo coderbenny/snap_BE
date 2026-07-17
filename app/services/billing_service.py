@@ -199,6 +199,11 @@ class BillingService:
                 discount = min(coupon.discount_value, original_amount)
             discounted_amount = max(0, original_amount - discount)
 
+        # 100% coupon — activate directly, no payment needed.
+        if coupon and discounted_amount == 0:
+            BillingService._activate_free_coupon_subscription(user, tier, coupon)
+            return {'free': True, 'tier': tier}
+
         metadata: dict = {'user_id': user.id, 'tier': tier}
         if coupon:
             metadata['coupon_id'] = coupon.id
@@ -219,6 +224,54 @@ class BillingService:
             'access_code': d['access_code'],
             'reference': d['reference'],
         }
+
+    @staticmethod
+    def _activate_free_coupon_subscription(user: User, tier: str, coupon: 'Coupon') -> None:
+        """Activate a subscription directly for a 100% coupon — no Paystack involved.
+
+        The subscription expires after one billing period (30 days for monthly
+        plans). When it lapses the user's plan falls back to free and they must
+        go through the normal Paystack flow to continue, which maintains full
+        billing consistency: no $0 Paystack transactions, no orphaned
+        subscriptions, and no risk of the free access persisting indefinitely.
+        """
+        now = utcnow()
+        expires = now + timedelta(days=30)
+
+        sub = db.session.execute(
+            select(Subscription).where(Subscription.user_id == user.id)
+        ).scalar_one_or_none()
+
+        if sub:
+            sub.tier = tier
+            sub.status = 'active'
+            sub.expires_at = expires
+            # Clear any stale Paystack codes so the portal endpoint doesn't
+            # try to look up a subscription that was never created.
+            sub.paystack_sub_code = None
+        else:
+            db.session.add(Subscription(
+                user_id=user.id,
+                tier=tier,
+                status='active',
+                expires_at=expires,
+            ))
+
+        user.plan_tier = tier
+        db.session.commit()
+
+        BillingService._record_coupon_use(coupon.id, user.id, tier)
+        sse_manager.publish(user.id, 'plan_changed', {'plan': tier})
+        logger.info(
+            'Free-coupon subscription activated: user=%s tier=%s expires=%s',
+            user.id, tier, expires.isoformat(),
+        )
+
+        try:
+            from app.services.email_service import EmailService
+            EmailService.send_subscription_confirmed(user.email, tier)
+        except Exception:
+            logger.exception('Failed to send subscription email to %s', user.email)
 
     @staticmethod
     def _validate_coupon_for_tier(code: str, tier: str) -> 'Coupon':
