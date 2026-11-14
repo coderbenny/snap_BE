@@ -1,7 +1,11 @@
 import uuid
+from datetime import timedelta
 
 from app.extensions import db
 from app.utils.time import utcnow
+
+# Grace for Paystack webhook lag before a lapsed subscription loses access.
+EXPIRY_GRACE = timedelta(days=3)
 
 
 class Subscription(db.Model):
@@ -32,3 +36,11 @@ class Subscription(db.Model):
     created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
 
     user = db.relationship('User', back_populates='subscription')
+
+    def is_lapsed(self, now=None) -> bool:
+        """True when the period ended past the grace window and Paystack is not
+        carrying the subscription (no sub code, or it is past_due/cancelled)."""
+        now = now or utcnow()
+        if self.expires_at >= now - EXPIRY_GRACE:
+            return False
+        return self.paystack_sub_code is None or self.status in ('past_due', 'cancelled')

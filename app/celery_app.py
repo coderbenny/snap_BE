@@ -20,13 +20,17 @@ def init_celery(app):
         accept_content=['json'],
         broker_connection_retry_on_startup=True,
     )
-    celery.conf.include = ['app.tasks.email_tasks']
+    celery.conf.include = ['app.tasks.email_tasks', 'app.tasks.billing_tasks']
     celery.Task = ContextTask
 
     celery.conf.beat_schedule = {
         'send-expiry-warnings-daily': {
             'task': 'app.tasks.email_tasks.send_expiry_warnings',
             'schedule': crontab(hour=8, minute=0),
+        },
+        'downgrade-expired-subscriptions': {
+            'task': 'app.tasks.billing_tasks.downgrade_expired_subscriptions',
+            'schedule': crontab(minute='*/15'),
         },
     }
     celery.conf.timezone = 'UTC'

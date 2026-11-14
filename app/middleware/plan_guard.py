@@ -16,7 +16,11 @@ def require_plan(*tiers: str):
     def decorator(f):
         @wraps(f)
         def decorated(*args, **kwargs):
-            user_tier = g.current_user.plan_tier
+            user = g.current_user
+            user_tier = user.plan_tier
+            sub = user.subscription
+            if user_tier != 'free' and sub is not None and sub.is_lapsed():
+                user_tier = 'free'  # expires_at is authoritative; the task catches up
             if user_tier not in tiers:
                 return forbidden(
                     'This feature requires a Pro subscription — '
