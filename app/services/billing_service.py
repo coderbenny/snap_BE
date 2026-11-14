@@ -5,7 +5,8 @@ from datetime import datetime, timedelta
 
 import requests
 from flask import current_app
-from sqlalchemy import select
+from sqlalchemy import or_, select, update
+from sqlalchemy.exc import IntegrityError
 
 from app.extensions import db
 from app.models.coupon import Coupon, CouponUse
@@ -191,7 +192,7 @@ class BillingService:
 
         if coupon_code:
             coupon = BillingService._validate_coupon_for_tier(
-                coupon_code.strip().upper(), tier
+                coupon_code.strip().upper(), tier, user.id
             )
             if coupon.discount_type == 'percentage':
                 discount = int(original_amount * coupon.discount_value / 100)
@@ -242,25 +243,53 @@ class BillingService:
             select(Subscription).where(Subscription.user_id == user.id)
         ).scalar_one_or_none()
 
-        if sub:
-            sub.tier = tier
-            sub.status = 'active'
-            sub.expires_at = expires
-            # Clear any stale Paystack codes so the portal endpoint doesn't
-            # try to look up a subscription that was never created.
-            sub.paystack_sub_code = None
-        else:
-            db.session.add(Subscription(
-                user_id=user.id,
-                tier=tier,
-                status='active',
-                expires_at=expires,
-            ))
+        # Never replace a live Paystack subscription: Paystack would keep
+        # charging while our record no longer matches its webhooks.
+        if (
+            sub
+            and sub.paystack_sub_code
+            and sub.status in ('active', 'past_due', 'trialing')
+        ):
+            raise ValueError(
+                'You already have an active subscription. '
+                'Cancel it before redeeming a free coupon.'
+            )
 
-        user.plan_tier = tier
-        db.session.commit()
+        # Everything below commits once, or not at all.
+        try:
+            # Atomic slot claim: the limit is enforced by the UPDATE itself,
+            # not by a possibly stale read done earlier.
+            claimed = db.session.execute(
+                update(Coupon)
+                .where(
+                    Coupon.id == coupon.id,
+                    or_(Coupon.max_uses.is_(None), Coupon.current_uses < Coupon.max_uses),
+                )
+                .values(current_uses=Coupon.current_uses + 1)
+            ).rowcount
+            if claimed != 1:
+                raise ValueError('This coupon has reached its usage limit')
 
-        BillingService._record_coupon_use(coupon.id, user.id, tier)
+            db.session.add(CouponUse(coupon_id=coupon.id, user_id=user.id, tier=tier))
+
+            if sub:
+                sub.tier = tier
+                sub.status = 'active'
+                sub.expires_at = expires
+                sub.paystack_sub_code = None
+            else:
+                db.session.add(Subscription(
+                    user_id=user.id, tier=tier, status='active', expires_at=expires,
+                ))
+            user.plan_tier = tier
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()  # UNIQUE(coupon_id, user_id): concurrent repeat
+            raise ValueError('You have already used this coupon')
+        except Exception:
+            db.session.rollback()
+            raise
+
         sse_manager.publish(user.id, 'plan_changed', {'plan': tier})
         logger.info(
             'Free-coupon subscription activated: user=%s tier=%s expires=%s',
@@ -274,7 +303,7 @@ class BillingService:
             logger.exception('Failed to send subscription email to %s', user.email)
 
     @staticmethod
-    def _validate_coupon_for_tier(code: str, tier: str) -> 'Coupon':
+    def _validate_coupon_for_tier(code: str, tier: str, user_id: str | None = None) -> 'Coupon':
         """Validate a coupon server-side and return it. Raises ValueError on any failure."""
         coupon = db.session.execute(
             select(Coupon).where(Coupon.code == code)
@@ -292,6 +321,12 @@ class BillingService:
             raise ValueError('This coupon has reached its usage limit')
         if coupon.tier_restriction and coupon.tier_restriction != tier:
             raise ValueError(f'This coupon is only valid for the {coupon.tier_restriction} plan')
+        if user_id and db.session.execute(
+            select(CouponUse.id).where(
+                CouponUse.coupon_id == coupon.id, CouponUse.user_id == user_id
+            )
+        ).first():
+            raise ValueError('You have already used this coupon')
 
         return coupon
 
@@ -572,26 +607,26 @@ class BillingService:
 
     @staticmethod
     def _record_coupon_use(coupon_id: str, user_id: str, tier: str) -> None:
-        """Increment coupon.current_uses and write a CouponUse row. Idempotent."""
+        """Write a CouponUse row and bump current_uses. Idempotent.
+
+        Used after a paid checkout (verify and webhook both call it). The
+        payment already happened, so the usage limit is not enforced here.
+        """
         try:
-            existing = db.session.execute(
-                select(CouponUse).where(
-                    CouponUse.coupon_id == coupon_id,
-                    CouponUse.user_id == user_id,
+            with db.session.begin_nested():
+                db.session.add(CouponUse(coupon_id=coupon_id, user_id=user_id, tier=tier))
+                db.session.flush()  # raises IntegrityError on a repeat
+                db.session.execute(
+                    update(Coupon)
+                    .where(Coupon.id == coupon_id)
+                    .values(current_uses=Coupon.current_uses + 1)
                 )
-            ).scalar_one_or_none()
-            if existing:
-                return  # already recorded (verify + webhook both fire)
-
-            coupon = db.session.get(Coupon, coupon_id)
-            if not coupon:
-                return
-
-            db.session.add(CouponUse(coupon_id=coupon_id, user_id=user_id, tier=tier))
-            coupon.current_uses += 1
             db.session.commit()
             logger.info('Coupon use recorded: coupon=%s user=%s tier=%s', coupon_id, user_id, tier)
+        except IntegrityError:
+            db.session.rollback()  # already recorded (verify + webhook both fire)
         except Exception:
+            db.session.rollback()
             logger.exception('Failed to record coupon use: coupon=%s user=%s', coupon_id, user_id)
 
     @staticmethod

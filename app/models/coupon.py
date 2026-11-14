@@ -38,6 +38,9 @@ class Coupon(db.Model):
 
 class CouponUse(db.Model):
     __tablename__ = 'coupon_uses'
+    __table_args__ = (
+        db.UniqueConstraint('coupon_id', 'user_id', name='uq_coupon_uses_coupon_user'),
+    )
 
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     coupon_id = db.Column(
